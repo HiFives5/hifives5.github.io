@@ -167,6 +167,17 @@ textarea.input{resize:none;min-height:80px}
 .bar-fill{height:100%;background:var(--orange);border-radius:4px;transition:width .6s ease}
 .mine-hl .agg-name{color:var(--orange)}
 
+/* ── TABLEAU TOP 5 / TOP 3 / #1 ── */
+.st{width:100%;border-collapse:collapse;font-size:13px}
+.st th{font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;padding:0 0 8px;text-align:center}
+.st td{padding:6px 0;border-top:1px solid var(--border);vertical-align:middle}
+.st-rk{width:34px}
+.st-name{font-weight:700;padding-right:8px !important;line-height:1.3}
+.st-num{width:54px;text-align:center}
+.st-num span{display:inline-block;min-width:46px;padding:5px 4px;border-radius:8px;font-weight:800;font-size:12px}
+.st tr.hl .st-name{color:var(--orange)}
+.st-tag{display:inline-block;font-size:10px;font-weight:800;color:var(--purple);background:var(--pd);padding:2px 6px;border-radius:6px;margin-left:4px;vertical-align:1px}
+
 /* ── COMPARAISON (après publication) ── */
 .cmp{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--border)}
 .cmp:first-child{border-top:none}
@@ -726,12 +737,30 @@ function aggregate(items, allowedTopIds) {
     tops.add(it.top_id);
     const k = norm(it.content);
     let e = m.get(k);
-    if (!e) m.set(k, e = { key: k, content: it.content, n: 0, score: 0, first: 0 });
+    if (!e) m.set(k, e = { key: k, content: it.content, n: 0, top3: 0, score: 0, first: 0 });
     e.n++;
+    if (it.rank <= 3) e.top3++;
     e.score += 6 - it.rank;
     if (it.rank === 1) e.first++;
   }
   return { total: tops.size, rows: [...m.values()].sort((a, b) => b.score - a.score || b.n - a.n) };
+}
+
+// Tableau « présence dans le top 5 / top 3 / en #1 » (en % des tops)
+// rows : [{ rk, label, t5, t3, t1, hl, tag }]
+function statTable(rows, total) {
+  const cell = n => {
+    const p = total ? Math.round(n / total * 100) : 0;
+    const bg = p ? `background:rgba(255,92,46,${(0.08 + p / 100 * 0.5).toFixed(2)});color:${p >= 50 ? '#fff' : 'var(--text)'}` : 'color:var(--t3)';
+    return `<td class="st-num"><span style="${bg}">${p ? p + ' %' : '–'}</span></td>`;
+  };
+  return `<table class="st">
+    <thead><tr><th></th><th style="text-align:left">Réponse</th><th>Top 5</th><th>Top 3</th><th>#1</th></tr></thead>
+    <tbody>${rows.map(r => `<tr class="${r.hl ? 'hl' : ''}">
+      <td class="st-rk"><div class="rank ${r.rk === 1 ? 'r1' : ''}">${r.rk}</div></td>
+      <td class="st-name">${esc(r.label)}${r.tag ? `<span class="st-tag">${r.tag}</span>` : ''}</td>
+      ${cell(r.t5)}${cell(r.t3)}${cell(r.t1)}</tr>`).join('')}</tbody>
+  </table>`;
 }
 
 // ─────────────────────────────────────────
@@ -1171,16 +1200,8 @@ async function renderTopic(id) {
   // Classement agrégé
   const agg = aggregate(items, new Set(vis.map(a => a.id)));
   $('tp-agg').innerHTML = agg.rows.length
-    ? agg.rows.slice(0, 10).map((r, i) => {
-        const pct = Math.round(r.n / agg.total * 100);
-        return `<div class="agg-row ${myKeys.has(r.key) ? 'mine-hl' : ''}">
-          <div class="agg-top">
-            <span class="agg-name">${i + 1}. ${esc(r.content)}</span>
-            <span class="agg-num">${pct} %${r.first ? ` · ${r.first}× #1` : ''}</span>
-          </div>
-          <div class="bar-bg"><div class="bar-fill" style="width:${pct}%"></div></div>
-        </div>`;
-      }).join('') + '<p class="hint" style="margin-bottom:8px">% = part des tops qui citent cette réponse. En orange : tes choix.</p>'
+    ? statTable(agg.rows.slice(0, 10).map((r, i) => ({ rk: i + 1, label: r.content, t5: r.n, t3: r.top3, t1: r.first, hl: myKeys.has(r.key) })), agg.total) +
+      `<p class="hint" style="margin-bottom:8px">Part des ${agg.total} tops qui ont cette réponse dans leur top 5, dans leur top 3, et en n°1. En orange : tes choix.</p>`
     : '<div style="font-size:13px;color:var(--t3);padding:4px 0 12px">Personne n\'a encore répondu avec ces filtres. Sois le premier !</div>';
 
   // Réponses récentes des autres
@@ -1381,12 +1402,8 @@ async function renderSuccess(topic, myVals, isNew) {
   const items = await fetchTopicItems(topic.id).catch(() => []);
   const others = visibleAnswers().filter(a => a.topic_id === topic.id && a.user_id !== me.id);
   const otherIds = new Set(others.map(a => a.id));
-  const cited = {};
-  items.forEach(it => {
-    if (!otherIds.has(it.top_id)) return;
-    const k = norm(it.content);
-    (cited[k] = cited[k] || new Set()).add(it.top_id);
-  });
+  const agg = aggregate(items, otherIds);
+  const byKey = Object.fromEntries(agg.rows.map(r => [r.key, r]));
   const total = others.length;
   if (!total) {
     $('sc-cmp-lbl').textContent = 'Toi vs la communauté';
@@ -1394,16 +1411,14 @@ async function renderSuccess(topic, myVals, isNew) {
     return;
   }
   $('sc-cmp-lbl').innerHTML = `Toi vs la communauté <span class="count-pill">${total} autre${total > 1 ? 's' : ''}</span>`;
-  const stats = myVals.map(v => ({ v, pct: Math.round(((cited[norm(v)]?.size) || 0) / total * 100) }));
+  const stats = myVals.map((v, i) => {
+    const r = byKey[norm(v)] || { n: 0, top3: 0, first: 0 };
+    return { rk: i + 1, label: v, t5: r.n, t3: r.top3, t1: r.first, pct: Math.round(r.n / total * 100), tag: r.n ? '' : 'Unique !' };
+  });
   const rarest = stats.reduce((a, b) => b.pct < a.pct ? b : a);
-  $('sc-cmp').innerHTML = stats.map((s, i) => `
-    <div class="cmp">
-      <div class="rank ${i === 0 ? 'r1' : ''}">${i + 1}</div>
-      <div class="cmp-name">${esc(s.v)}</div>
-      <div class="cmp-pct ${s.pct >= 30 ? 'hi' : 'lo'}">${s.pct === 0 ? 'Unique !' : s.pct + ' %'}</div>
-    </div>`).join('') +
-    `<p class="hint" style="margin-top:10px">% des autres qui ont aussi ce choix dans leur top.
-     ${rarest.pct < 30 ? `Ton choix le plus original : <strong style="color:var(--purple)">${esc(rarest.v)}</strong>.` : 'Tu as des goûts très partagés !'}</p>`;
+  $('sc-cmp').innerHTML = statTable(stats, total) +
+    `<p class="hint" style="margin-top:10px">Part des autres qui ont aussi ce choix dans leur top 5, leur top 3, et en n°1.
+     ${rarest.pct < 30 ? `Ton choix le plus original : <strong style="color:var(--purple)">${esc(rarest.label)}</strong>.` : 'Tu as des goûts très partagés !'}</p>`;
 }
 
 // ─────────────────────────────────────────
