@@ -102,6 +102,8 @@ textarea.input{resize:none;min-height:80px}
 .act{display:flex;align-items:center;gap:5px;font-size:13px;font-weight:700;color:var(--t3);background:var(--bg3);border:none;cursor:pointer;padding:7px 11px;border-radius:10px;transition:all .15s}
 .act:active{transform:scale(.95)}
 .act.liked{color:var(--orange);background:var(--og)}
+@keyframes hi5{0%{transform:scale(1) rotate(0)}40%{transform:scale(1.3) rotate(-15deg)}100%{transform:scale(1) rotate(0)}}
+.act.pop{animation:hi5 .35s ease}
 .act-reply{margin-left:auto;background:var(--orange);color:white;border-radius:11px;border:none;padding:7px 14px;font-size:13px;font-weight:800;cursor:pointer;box-shadow:0 4px 12px rgba(255,92,46,.3)}
 
 /* Ligne "sujet" */
@@ -449,7 +451,7 @@ textarea.input{resize:none;min-height:80px}
       <div class="p-div"></div>
       <div class="p-si"><div class="p-sn" id="p-pts">0</div><div class="p-sl">Points</div></div>
       <div class="p-div"></div>
-      <div class="p-si"><div class="p-sn" id="p-likes">0</div><div class="p-sl">♥ reçus</div></div>
+      <div class="p-si"><div class="p-sn" id="p-likes">0</div><div class="p-sl">✋ High fives</div></div>
     </div>
   </div>
   <div class="scroll">
@@ -985,7 +987,7 @@ function topCard(t, withTopic) {
       ${items.map((it, i) => `<li><div class="rank ${i === 0 ? 'r1' : ''}">${it.rank}</div>${esc(it.content)}</li>`).join('')}
     </ul>
     <div class="ca">
-      <button class="act ${liked ? 'liked' : ''}" data-n="${likes.length}" onclick="toggleLike('${t.id}',this)">♥ ${likes.length}</button>
+      <button class="act ${liked ? 'liked' : ''}" data-n="${likes.length}" data-h="${esc(p.handle)}" title="High five !" onclick="toggleLike('${t.id}',this)">✋ ${likes.length}</button>
       ${withTopic ? (done
         ? `<button class="act" style="margin-left:auto" onclick="openTopic('${t.topic_id}')">✓ Comparer</button>`
         : `<button class="act-reply" onclick="openFillById('${t.topic_id}')">Faire le mien →</button>`) : ''}
@@ -998,8 +1000,10 @@ async function toggleLike(topId, btn) {
   let n = parseInt(btn.dataset.n, 10) || 0;
   n += liked ? -1 : 1;
   btn.dataset.n = n;
-  btn.textContent = '♥ ' + n;
+  btn.textContent = '✋ ' + n;
   btn.classList.toggle('liked', !liked);
+  btn.classList.remove('pop');
+  if (!liked) { void btn.offsetWidth; btn.classList.add('pop'); toast('✋ High five envoyé à ' + (btn.dataset.h || 'l\'auteur') + ' !'); }
   const { error } = liked
     ? await sb.from('likes').delete().eq('top_id', topId).eq('user_id', me.id)
     : await sb.from('likes').insert({ top_id: topId, user_id: me.id });
@@ -1153,12 +1157,12 @@ async function renderTopic(id) {
   if (mineAns) {
     const myItems = items.filter(it => it.top_id === mineAns.id).sort((a, b) => a.rank - b.rank);
     myItems.forEach(it => myKeys.add(norm(it.content)));
-    $('tp-mine').innerHTML = `<div class="block"><div class="block-lbl">Mon top 5 <span class="count-pill" id="tp-mine-likes">♥ …</span></div>
+    $('tp-mine').innerHTML = `<div class="block"><div class="block-lbl">Mon top 5 <span class="count-pill" id="tp-mine-likes">✋ …</span></div>
       <ul class="clist" style="padding:0">${myItems.map(it => `<li><div class="rank ${it.rank === 1 ? 'r1' : ''}">${it.rank}</div>${esc(it.content)}</li>`).join('')}</ul></div>`;
     sb.from('likes').select('user_id').eq('top_id', mineAns.id).then(({ data }) => {
       const n = (data || []).length;
       const el = $('tp-mine-likes');
-      if (el) el.textContent = `♥ ${n} j'aime${n > 1 ? 's' : ''}`;
+      if (el) el.textContent = `✋ ${n} high five${n > 1 ? 's' : ''}`;
     });
   }
 
@@ -1500,7 +1504,7 @@ function fillProfileHeader(prefix, p) {
   return lvl;
 }
 
-// Nombre de ♥ reçus par chaque top d'un utilisateur : { top_id: n }
+// Nombre de high fives ✋ reçus par chaque top d'un utilisateur : { top_id: n }
 async function fetchLikeCounts(userId) {
   const { data } = await sb.from('tops').select('id,likes(user_id)').eq('user_id', userId);
   const m = {};
@@ -1517,7 +1521,7 @@ function myTopRows(userId, likes = {}) {
     <div class="topic-row" onclick="openTopic('${t.id}')">
       <div class="topic-ico">${CAT_ICON[t.category] || '⭐'}</div>
       <div style="flex:1;min-width:0"><div class="topic-ttl">${esc(t.title)}</div><div class="topic-meta">${esc(t.category)} · ${timeAgo(a.created_at)}</div></div>
-      <div style="font-size:12px;font-weight:800;flex-shrink:0;color:${likes[a.id] ? 'var(--orange)' : 'var(--t3)'}">♥ ${likes[a.id] || 0}</div>
+      <div style="font-size:12px;font-weight:800;flex-shrink:0;color:${likes[a.id] ? 'var(--orange)' : 'var(--t3)'}">✋ ${likes[a.id] || 0}</div>
     </div>`).join('');
 }
 
