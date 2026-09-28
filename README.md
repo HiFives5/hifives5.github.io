@@ -13,6 +13,7 @@ app/                 ← l'appli (publiée sur GitHub Pages)
 supabase/
   schema.sql         ← structure de la base + règles de sécurité
   seed.sql           ← 40 sujets, suggestions, 16 profils de démo
+  migrations/        ← évolutions de la base, à exécuter une fois chacune
   purge_demo.sql     ← supprime les profils de démo
 ```
 
@@ -24,6 +25,11 @@ supabase/
    ⚠️ Cela efface les anciens tops de test. Tes comptes sont conservés.
 3. Nouvelle requête : colle `supabase/seed.sql` → **Run**.
 4. *(Conseillé pour tester)* **Authentication → Sign In / Providers → Email** : désactive **Confirm email**, pour pouvoir s'inscrire sans valider d'email.
+
+### ⚠️ Évolutions de la base : migrations
+Une fois qu'il y a de vraies données, **ne plus jamais relancer `schema.sql`** (il efface tout).
+Les évolutions se font par des fichiers `supabase/migrations/NNN_*.sql`, à exécuter **une seule fois chacun**, dans l'ordre :
+- `002_plus_de_sujets.sql` : 11 nouvelles catégories et ~80 nouveaux sujets.
 
 ### 2. Mise en ligne (GitHub Pages)
 1. Sur GitHub : **Settings → Pages → Build and deployment → Source : GitHub Actions**.
