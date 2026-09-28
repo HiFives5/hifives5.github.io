@@ -1,0 +1,1533 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0E0E11">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="HiFives">
+<title>HiFives ✋</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital@1&display=swap" rel="stylesheet">
+<link href="https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@400,500,700,800,900&display=swap" rel="stylesheet">
+<style>
+/* ── RESET & VARS ── */
+:root {
+  --bg:     #0E0E11;
+  --bg2:    #161619;
+  --bg3:    #1E1E23;
+  --card:   #1A1A1F;
+  --card2:  #22222A;
+  --border: rgba(255,255,255,0.07);
+  --b2:     rgba(255,255,255,0.12);
+  --text:   #F2F0EB;
+  --t2:     rgba(242,240,235,0.55);
+  --t3:     rgba(242,240,235,0.28);
+  --orange: #FF5C2E;
+  --og:     rgba(255,92,46,0.18);
+  --green:  #00C48C;
+  --gd:     rgba(0,196,140,0.12);
+  --purple: #9B7FFF;
+  --pd:     rgba(155,127,255,0.12);
+  --gold:   #F5A623;
+  --r:      16px;
+  --rsm:    10px;
+  --font:   'Cabinet Grotesk', system-ui, -apple-system, sans-serif;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{background:var(--bg);font-family:var(--font);color:var(--text);min-height:100vh;max-width:430px;margin:0 auto;position:relative;overflow-x:hidden;padding-top:env(safe-area-inset-top,0px)}
+button{font-family:var(--font)}
+
+/* ── PAGES ── */
+.page{display:none;flex-direction:column;min-height:100vh;padding-bottom:calc(72px + var(--safe-b))}
+.page.active{display:flex}
+.page.no-nav{padding-bottom:0}
+
+/* ── NAV ── */
+#nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:430px;height:calc(64px + var(--safe-b));background:var(--bg2);border-top:1px solid var(--border);display:none;align-items:center;justify-content:space-around;padding-bottom:calc(6px + var(--safe-b));z-index:100}
+.nav-btn{display:flex;flex-direction:column;align-items:center;gap:3px;background:none;border:none;cursor:pointer;padding:4px 10px}
+.nav-ico{font-size:19px;opacity:.35;transition:opacity .2s}
+.nav-lbl{font-size:10px;font-weight:700;color:var(--t3);transition:color .2s}
+.nav-btn.active .nav-ico{opacity:1}
+.nav-btn.active .nav-lbl{color:var(--orange)}
+.nav-plus{width:46px;height:46px;background:var(--orange);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;color:white;margin-top:-14px;box-shadow:0 8px 20px rgba(255,92,46,.4);cursor:pointer;border:none;transition:transform .15s}
+.nav-plus:active{transform:scale(.93)}
+
+/* ── BUTTONS ── */
+.btn{width:100%;height:52px;border-radius:14px;border:none;font-size:15px;font-weight:800;cursor:pointer;transition:transform .15s,opacity .15s}
+.btn:active{transform:scale(.97)}
+.btn:disabled{opacity:.6}
+.btn-primary{background:var(--orange);color:white;box-shadow:0 6px 20px rgba(255,92,46,.35)}
+.btn-ghost{background:transparent;border:1px solid var(--b2);color:var(--t2)}
+.btn-green{background:var(--green);color:white}
+.bottom-bar{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:430px;padding:16px 20px calc(24px + var(--safe-b));background:linear-gradient(to top, var(--bg) 70%, transparent);z-index:50;pointer-events:none}
+.bottom-bar .btn{pointer-events:all;height:56px;font-size:16px;border-radius:16px;box-shadow:0 8px 28px rgba(255,92,46,.45)}
+
+/* ── FORMS ── */
+.input{width:100%;background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:13px 14px;color:var(--text);font-family:var(--font);font-size:16px;font-weight:600;outline:none;transition:border-color .2s}
+.input:focus{border-color:rgba(255,92,46,.4)}
+.input::placeholder{color:var(--t3)}
+select.input{appearance:none;-webkit-appearance:none}
+textarea.input{resize:none;min-height:80px}
+
+/* ── HEADER ── */
+.screen-hdr{padding:14px 20px 10px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.screen-title{font-size:22px;font-weight:900;letter-spacing:-.5px}
+.avatar{width:36px;height:36px;border-radius:12px;background:var(--orange);display:flex;align-items:center;justify-content:center;color:white;font-size:14px;font-weight:800;cursor:pointer;box-shadow:0 4px 12px rgba(255,92,46,.3)}
+.sub-hdr{padding:14px 20px;display:flex;align-items:center;gap:14px;border-bottom:1px solid var(--border);flex-shrink:0}
+.back-btn{width:36px;height:36px;border-radius:11px;background:var(--card2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;color:var(--t2);flex-shrink:0}
+.hdr-kicker{font-size:11px;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:.8px}
+.hdr-title{font-size:16px;font-weight:900;letter-spacing:-.3px;line-height:1.3}
+
+/* ── CARDS ── */
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--r)}
+.top5-card{margin:0 16px 14px}
+.top5-card .ch{padding:13px 16px 9px;display:flex;align-items:center;gap:10px}
+.cav{width:34px;height:34px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:white;flex-shrink:0;cursor:pointer}
+.top5-card .cu{font-size:13px;font-weight:700;color:var(--orange);cursor:pointer}
+.top5-card .ct{font-size:11px;color:var(--t3);margin-top:1px}
+.cc{font-size:10px;font-weight:700;padding:4px 9px;border-radius:8px;color:var(--orange);background:var(--og);margin-left:auto;flex-shrink:0}
+.top5-card .ctitle{padding:0 16px 11px;font-size:15px;font-weight:800;letter-spacing:-.3px;line-height:1.3;cursor:pointer}
+.clist{padding:0 16px 4px;list-style:none}
+.clist li{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--border);font-size:13px;font-weight:600}
+.rank{width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex-shrink:0;background:var(--bg3);color:var(--t3)}
+.rank.r1{background:rgba(245,166,35,.15);color:var(--gold)}
+.top5-card .ca{padding:10px 16px 13px;display:flex;gap:10px;align-items:center}
+.act{display:flex;align-items:center;gap:5px;font-size:13px;font-weight:700;color:var(--t3);background:var(--bg3);border:none;cursor:pointer;padding:7px 11px;border-radius:10px;transition:all .15s}
+.act:active{transform:scale(.95)}
+.act.liked{color:var(--orange);background:var(--og)}
+.act-reply{margin-left:auto;background:var(--orange);color:white;border-radius:11px;border:none;padding:7px 14px;font-size:13px;font-weight:800;cursor:pointer;box-shadow:0 4px 12px rgba(255,92,46,.3)}
+
+/* Ligne "sujet" */
+.topic-row{margin:0 16px 8px;background:var(--card);border:1px solid var(--border);border-radius:var(--rsm);padding:12px 14px;display:flex;align-items:center;gap:12px;cursor:pointer}
+.topic-row:active{opacity:.8}
+.topic-ico{width:40px;height:40px;border-radius:12px;background:var(--og);display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0}
+.topic-ttl{font-size:14px;font-weight:800;line-height:1.3}
+.topic-meta{font-size:11px;color:var(--t3);margin-top:3px;font-weight:600}
+.done-badge{font-size:10px;font-weight:800;color:var(--green);background:var(--gd);padding:4px 8px;border-radius:7px;flex-shrink:0}
+
+/* ── TABS ── */
+.feed-tabs{display:flex;gap:4px;padding:0 20px 13px;flex-shrink:0}
+.ftab{padding:6px 15px;border-radius:20px;font-size:13px;font-weight:700;cursor:pointer;border:none;background:transparent;color:var(--t3);transition:all .2s}
+.ftab.active{background:var(--card2);color:var(--text)}
+
+/* ── SECTION LABEL ── */
+.slbl{padding:14px 20px 8px;font-size:11px;font-weight:700;color:var(--t3);letter-spacing:1px;text-transform:uppercase;display:flex;align-items:center;justify-content:space-between}
+.slbl a{color:var(--orange);text-decoration:none;letter-spacing:0;text-transform:none;font-size:12px;cursor:pointer}
+
+/* ── INSIGHT ── */
+.insight{margin:0 16px 14px;background:linear-gradient(145deg,#1A1020,#0E0E14);border:1px solid rgba(155,127,255,.15);border-radius:var(--r);padding:18px}
+.ins-tag{font-size:10px;font-weight:700;background:var(--pd);color:var(--purple);padding:4px 10px;border-radius:20px;display:inline-block;margin-bottom:10px}
+.ins-text{font-size:14px;color:var(--t2);line-height:1.55}
+
+/* ── AD ── */
+.ad{margin:6px 16px 14px;background:var(--card);border:1px solid var(--border);border-radius:var(--rsm);padding:11px 14px;display:flex;align-items:center;gap:10px}
+.ad-tag{font-size:9px;font-weight:700;color:var(--t3);border:1px solid var(--b2);border-radius:4px;padding:2px 5px;flex-shrink:0;letter-spacing:.5px}
+.ad-txt{flex:1;font-size:12px;color:var(--t2)}
+.ad-cta{font-size:12px;font-weight:700;color:var(--orange);flex-shrink:0}
+
+/* ── CREATE ── */
+.prog-bg{height:3px;background:var(--bg3);flex-shrink:0}
+.prog-fill{height:100%;background:var(--orange);border-radius:2px;transition:width .4s ease}
+.cat-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:16px}
+.cat-chip{border:1px solid var(--border);border-radius:var(--rsm);padding:14px 13px;cursor:pointer;text-align:left;background:var(--card);transition:all .15s}
+.cat-chip:active{transform:scale(.97)}
+.cat-chip.sel{border-color:rgba(255,92,46,.4);background:var(--og)}
+.cat-chip .ci{font-size:23px;margin-bottom:7px}
+.cat-chip .cl{font-size:13px;font-weight:800;color:var(--text)}
+.body-pad{padding:20px;flex:1}
+.hint{font-size:12px;color:var(--t3);margin-top:8px;line-height:1.5}
+
+/* ── SAISIE + AUTOCOMPLÉTION ── */
+.rank-row{display:flex;align-items:flex-start;gap:10px;margin-bottom:9px}
+.rank-n{width:32px;height:44px;border-radius:10px;background:var(--bg3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:var(--t3);flex-shrink:0}
+.rank-n.ok{background:var(--og);color:var(--orange);border-color:rgba(255,92,46,.3)}
+.ac-box{flex:1;position:relative}
+.ac-box .input{height:44px;padding:0 14px}
+.ac-list{display:none;position:absolute;left:0;right:0;top:48px;background:var(--card2);border:1px solid var(--b2);border-radius:12px;overflow:hidden;z-index:30;box-shadow:0 12px 30px rgba(0,0,0,.5)}
+.ac-opt{padding:11px 14px;font-size:14px;font-weight:600;color:var(--text);cursor:pointer;border-top:1px solid var(--border)}
+.ac-opt:first-child{border-top:none}
+.ac-opt:active,.ac-opt:hover{background:var(--og)}
+.ac-opt small{color:var(--t3);font-weight:600;margin-left:6px}
+
+/* ── AGRÉGATS ── */
+.agg-row{margin-bottom:12px}
+.agg-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:5px}
+.agg-name{font-size:13px;font-weight:700}
+.agg-num{font-size:11px;color:var(--t3);font-weight:600;flex-shrink:0}
+.bar-bg{background:var(--bg3);border-radius:4px;height:5px;overflow:hidden}
+.bar-fill{height:100%;background:var(--orange);border-radius:4px;transition:width .6s ease}
+.mine-hl .agg-name{color:var(--orange)}
+
+/* ── COMPARAISON (après publication) ── */
+.cmp{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--border)}
+.cmp:first-child{border-top:none}
+.cmp-name{flex:1;font-size:14px;font-weight:700}
+.cmp-pct{font-size:12px;font-weight:800;padding:4px 9px;border-radius:8px;flex-shrink:0}
+.cmp-pct.hi{color:var(--green);background:var(--gd)}
+.cmp-pct.lo{color:var(--purple);background:var(--pd)}
+
+/* ── PROFILE ── */
+.profile-hero{background:var(--card);border-bottom:1px solid var(--border);padding:16px 20px 18px}
+.p-av{width:62px;height:62px;border-radius:20px;background:var(--orange);display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:900;color:white;box-shadow:0 6px 20px rgba(255,92,46,.3);flex-shrink:0}
+.p-stats{display:flex;margin-top:14px;padding-top:14px;border-top:1px solid var(--border)}
+.p-si{flex:1;text-align:center}
+.p-sn{font-size:20px;font-weight:900;letter-spacing:-1px}
+.p-sl{font-size:10px;color:var(--t3);margin-top:2px;font-weight:600;text-transform:uppercase;letter-spacing:.3px}
+.p-div{width:1px;background:var(--border);margin:0 4px}
+.xp-card{margin:12px 16px 0;background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:16px}
+.xp-bar-bg{background:var(--bg3);border-radius:6px;height:6px;overflow:hidden;margin:8px 0}
+.xp-bar-fill{height:100%;background:var(--orange);border-radius:6px;transition:width .8s ease}
+.badge-pill{font-size:10px;font-weight:700;padding:4px 9px;border-radius:7px;background:var(--bg3);color:var(--t2)}
+.badge-orange{background:var(--og);color:var(--orange)}
+.setting{margin:12px 16px 0;background:var(--card);border:1px solid var(--border);border-radius:var(--rsm);padding:14px;display:flex;align-items:center;gap:12px}
+.setting input{width:20px;height:20px;accent-color:var(--orange)}
+
+/* ── SEARCH ── */
+.search-box{display:flex;align-items:center;gap:10px;background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:11px 14px;margin:4px 16px 6px}
+.search-box input{flex:1;border:none;outline:none;font-family:var(--font);font-size:16px;font-weight:600;color:var(--text);background:transparent;min-width:0}
+.fscr{display:flex;gap:7px;padding:8px 16px;overflow-x:auto;scrollbar-width:none;flex-shrink:0}
+.fscr::-webkit-scrollbar{display:none}
+.fc{border:1px solid var(--border);border-radius:20px;padding:6px 13px;font-size:12px;font-weight:700;color:var(--t3);background:var(--card);cursor:pointer;white-space:nowrap}
+.fc.active{background:var(--text);color:var(--bg);border-color:var(--text)}
+.fc.on{color:var(--orange);border-color:rgba(255,92,46,.4);background:var(--og)}
+.sort-row{display:flex;padding:0 16px;border-bottom:1px solid var(--border);margin-bottom:10px;flex-shrink:0}
+.stab{flex:1;padding:9px 0;font-size:12px;font-weight:700;color:var(--t3);background:transparent;border:none;cursor:pointer;border-bottom:2px solid transparent}
+.stab.active{color:var(--orange);border-bottom-color:var(--orange)}
+
+/* ── MODAL ── */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;display:none;align-items:flex-end;justify-content:center}
+.modal-bg.open{display:flex}
+.modal-sheet{background:var(--card2);border-radius:24px 24px 0 0;padding:20px 20px calc(20px + var(--safe-b));width:100%;max-width:430px;border-top:1px solid var(--border);animation:shUp .3s ease both;max-height:85vh;overflow-y:auto}
+@keyframes shUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.mhandle{width:36px;height:4px;background:var(--b2);border-radius:2px;margin:0 auto 18px}
+.mgroup{font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px}
+.chip-group{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:16px}
+.copt{border:1px solid var(--b2);border-radius:20px;padding:7px 13px;font-size:13px;font-weight:700;color:var(--t2);background:var(--bg3);cursor:pointer}
+.copt.sel{background:var(--og);color:var(--orange);border-color:rgba(255,92,46,.35)}
+
+/* ── SUCCESS ── */
+.s-pts{font-size:52px;font-weight:900;color:var(--orange);letter-spacing:-3px}
+
+/* ── AUTH ── */
+#page-auth{justify-content:flex-end;overflow:hidden}
+.auth-glow{position:absolute;top:-60px;left:-60px;width:320px;height:320px;border-radius:160px;background:rgba(255,92,46,.08);pointer-events:none}
+.auth-pills{padding:0 28px;display:flex;flex-direction:column;gap:8px;margin-bottom:20px}
+.auth-pill{background:var(--card);border:1px solid var(--b2);border-radius:40px;padding:11px 16px;color:var(--text);font-size:13px;font-weight:600;display:flex;align-items:center;gap:12px}
+.auth-pill-ico{width:30px;height:30px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+
+/* ── TOAST ── */
+#toast{position:fixed;bottom:calc(90px + var(--safe-b));left:50%;transform:translateX(-50%);background:var(--card2);border:1px solid var(--b2);border-radius:12px;padding:10px 18px;font-size:13px;font-weight:700;color:var(--t2);opacity:0;transition:opacity .25s;z-index:500;pointer-events:none;max-width:360px;text-align:center}
+
+/* ── EMPTY / LOADING ── */
+.empty{text-align:center;padding:40px 24px;color:var(--t3);font-size:14px;line-height:1.5}
+.empty-ico{font-size:36px;margin-bottom:12px;opacity:.4}
+.loader{display:flex;justify-content:center;padding:32px}
+.loader-dot{width:8px;height:8px;border-radius:50%;background:var(--orange);margin:0 4px;animation:bounce .8s infinite alternate}
+.loader-dot:nth-child(2){animation-delay:.2s}
+.loader-dot:nth-child(3){animation-delay:.4s}
+@keyframes bounce{from{transform:translateY(0);opacity:.4}to{transform:translateY(-10px);opacity:1}}
+
+/* ── MISC ── */
+.scroll{flex:1;overflow-y:auto;scrollbar-width:none}
+.scroll::-webkit-scrollbar{display:none}
+.row{display:flex;gap:10px}
+.msg{border-radius:10px;padding:10px 14px;font-size:13px;margin-bottom:12px;line-height:1.45}
+.msg-err{background:rgba(255,80,80,.1);border:1px solid rgba(255,80,80,.25);color:#FF6060}
+.msg-ok{background:var(--gd);border:1px solid rgba(0,196,140,.25);color:var(--green)}
+.block{padding:16px 20px 4px}
+.block-lbl{font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.count-pill{background:var(--bg3);color:var(--t3);border-radius:20px;padding:2px 8px;font-size:10px;text-transform:none;letter-spacing:0}
+</style>
+</head>
+<body>
+
+<!-- ══════ CHARGEMENT ══════ -->
+<div id="page-loading" class="page no-nav active" style="justify-content:center;align-items:center">
+  <div style="font-size:40px;font-weight:900;letter-spacing:-2px;margin-bottom:16px">Hi<span style="color:var(--orange)">Fives</span> ✋</div>
+  <div class="loader"><div class="loader-dot"></div><div class="loader-dot"></div><div class="loader-dot"></div></div>
+  <div id="loading-msg" style="padding:0 32px;text-align:center"></div>
+</div>
+
+<!-- ══════ AUTH ══════ -->
+<div id="page-auth" class="page no-nav">
+  <div class="auth-glow"></div>
+  <div style="flex:1;padding:60px 28px 24px;display:flex;flex-direction:column;justify-content:flex-end">
+    <div style="font-size:52px;font-weight:900;letter-spacing:-3px;line-height:1">Hi<span style="color:var(--orange)">Fives</span> ✋</div>
+    <div style="font-family:'Lora',serif;font-style:italic;font-size:19px;color:var(--t2);line-height:1.45;margin-top:14px">Tes goûts révèlent qui tu es.<br>Et qui tu vas adorer.</div>
+  </div>
+  <div class="auth-pills">
+    <div class="auth-pill"><div class="auth-pill-ico" style="background:rgba(29,185,84,.2)">🎵</div>Top 5 albums de rap West Coast</div>
+    <div class="auth-pill"><div class="auth-pill-ico" style="background:rgba(229,9,20,.2)">🎬</div>Top 5 films italiens de tous les temps</div>
+    <div class="auth-pill"><div class="auth-pill-ico" style="background:rgba(255,92,46,.2)">⚽</div>Top 5 clubs de foot préférés</div>
+  </div>
+  <div style="padding:0 28px calc(40px + var(--safe-b))">
+    <div id="auth-msg" class="msg" style="display:none"></div>
+    <div style="display:flex;gap:4px;margin-bottom:16px">
+      <button id="tab-login-btn" class="ftab active" onclick="switchAuthTab('login')" style="flex:1">Connexion</button>
+      <button id="tab-signup-btn" class="ftab" onclick="switchAuthTab('signup')" style="flex:1">Inscription</button>
+    </div>
+    <form id="auth-login" onsubmit="event.preventDefault();doLogin()">
+      <input id="login-email" class="input" type="email" autocomplete="email" placeholder="Email" style="margin-bottom:10px">
+      <input id="login-pwd" class="input" type="password" autocomplete="current-password" placeholder="Mot de passe" style="margin-bottom:16px">
+      <button class="btn btn-primary" type="submit">Se connecter</button>
+    </form>
+    <form id="auth-signup" style="display:none" onsubmit="event.preventDefault();doSignup()">
+      <div class="row">
+        <input id="su-name" class="input" placeholder="Prénom" autocomplete="given-name" style="margin-bottom:10px">
+        <input id="su-handle" class="input" placeholder="@pseudo" autocapitalize="off" style="margin-bottom:10px">
+      </div>
+      <input id="su-email" class="input" type="email" autocomplete="email" placeholder="Email" style="margin-bottom:10px">
+      <input id="su-pwd" class="input" type="password" autocomplete="new-password" placeholder="Mot de passe (6 car. min)" style="margin-bottom:10px">
+      <select id="su-country" class="input" style="margin-bottom:10px"></select>
+      <div class="row" style="margin-bottom:16px">
+        <select id="su-year" class="input" style="flex:1"></select>
+        <select id="su-gender" class="input" style="flex:1"></select>
+      </div>
+      <button class="btn btn-primary" type="submit">Créer mon compte →</button>
+      <p class="hint" style="text-align:center">Pays, âge et genre servent uniquement aux statistiques anonymes.</p>
+    </form>
+  </div>
+</div>
+
+<!-- ══════ ACCUEIL ══════ -->
+<div id="page-home" class="page">
+  <div class="screen-hdr">
+    <div class="screen-title">Hi<span style="color:var(--orange)">Fives</span> ✋</div>
+    <div class="avatar" id="home-av" onclick="navTo('profile')">?</div>
+  </div>
+  <div class="feed-tabs">
+    <button class="ftab active" id="htab-foryou" onclick="setHomeTab('foryou')">Pour toi</button>
+    <button class="ftab" id="htab-activity" onclick="setHomeTab('activity')">Activité</button>
+  </div>
+  <div class="scroll">
+    <div id="home-foryou">
+      <div id="daily-box"></div>
+      <div class="slbl">À remplir <a onclick="navTo('search')">Voir tous les sujets →</a></div>
+      <div id="todo-list"></div>
+      <div class="ad"><div class="ad-tag">PUB</div><div class="ad-txt"><strong style="color:var(--text)">Emplacement publicitaire</strong> — version sans pub bientôt disponible</div><div class="ad-cta">Info →</div></div>
+    </div>
+    <div id="home-activity" style="display:none"></div>
+  </div>
+</div>
+
+<!-- ══════ RECHERCHE ══════ -->
+<div id="page-search" class="page">
+  <div class="screen-hdr"><div class="screen-title">Sujets</div></div>
+  <div class="search-box">
+    <span style="font-size:15px;color:var(--t3)">🔍</span>
+    <input id="search-q" type="search" placeholder="Cinéma, foot, voyage…" oninput="renderSearch()">
+  </div>
+  <div class="fscr" id="search-cats"></div>
+  <div class="sort-row">
+    <button class="stab active" data-sort="popular" onclick="setSort(this)">Les + remplis</button>
+    <button class="stab" data-sort="recent" onclick="setSort(this)">Récents</button>
+    <button class="stab" data-sort="suggested" onclick="setSort(this)">Suggérés</button>
+  </div>
+  <div class="scroll" id="search-results" style="padding-bottom:12px"></div>
+</div>
+
+<!-- ══════ CRÉER UN SUJET ══════ -->
+<div id="page-create" class="page no-nav">
+  <div class="sub-hdr">
+    <div class="back-btn" onclick="createBack()">←</div>
+    <div>
+      <div class="hdr-kicker" style="color:var(--t3)" id="cs-lbl">Étape 1 sur 2</div>
+      <div class="hdr-title" style="font-size:17px" id="cs-ttl">Choisis une catégorie</div>
+    </div>
+  </div>
+  <div class="prog-bg"><div class="prog-fill" id="cs-prog" style="width:50%"></div></div>
+  <div class="scroll" style="padding-bottom:110px">
+    <div id="cs1" class="body-pad">
+      <div class="cat-grid" id="cat-grid"></div>
+      <p class="hint">Tu proposes un nouveau sujet à la communauté (+20 points), puis tu remplis ton top 5 (+50 points).</p>
+    </div>
+    <div id="cs2" class="body-pad" style="display:none">
+      <p style="font-size:14px;color:var(--t3);margin-bottom:12px;font-weight:600">Formule le titre de ton top 5 :</p>
+      <textarea id="top-title" class="input" rows="3" maxlength="110" placeholder="Ex : Top 5 films italiens de tous les temps" oninput="renderSimilar()"></textarea>
+      <p class="hint">« Top 5 » est ajouté automatiquement si tu l'oublies.</p>
+      <div id="similar-box"></div>
+    </div>
+  </div>
+  <div class="bottom-bar"><button class="btn btn-primary" id="cs-next" onclick="createNext()">Suivant →</button></div>
+</div>
+
+<!-- ══════ DÉTAIL D'UN SUJET ══════ -->
+<div id="page-topic" class="page no-nav">
+  <div class="sub-hdr">
+    <div class="back-btn" onclick="goBack()">←</div>
+    <div style="flex:1;min-width:0">
+      <div class="hdr-kicker" id="tp-cat"></div>
+      <div class="hdr-title" id="tp-title"></div>
+    </div>
+  </div>
+  <div class="fscr" style="padding-top:12px">
+    <div class="fc filter-btn" onclick="openFilters()">🌍 Filtres</div>
+    <div class="fc" id="tp-count" style="cursor:default"></div>
+  </div>
+  <div class="scroll" style="padding-bottom:110px">
+    <div id="tp-mine"></div>
+    <div class="block">
+      <div class="block-lbl">Classement de la communauté</div>
+      <div id="tp-agg"></div>
+    </div>
+    <div class="block">
+      <div class="block-lbl">Réponses récentes</div>
+    </div>
+    <div id="tp-recent"></div>
+  </div>
+  <div class="bottom-bar"><button class="btn btn-primary" id="tp-fill-btn">Faire mon top 5 →</button></div>
+</div>
+
+<!-- ══════ REMPLIR UN TOP ══════ -->
+<div id="page-fill" class="page no-nav">
+  <div class="sub-hdr">
+    <div class="back-btn" onclick="goBack()">←</div>
+    <div style="flex:1;min-width:0">
+      <div class="hdr-kicker" id="fill-cat"></div>
+      <div class="hdr-title" id="fill-title"></div>
+    </div>
+  </div>
+  <div class="scroll" style="padding:20px 20px 260px">
+    <p style="font-size:13px;color:var(--t3);margin-bottom:16px;font-weight:600">Ton classement, du #1 au #5 (3 minimum). Tape pour voir les suggestions.</p>
+    <div id="fill-rows"></div>
+    <p class="hint">Tes réponses alimentent les statistiques anonymes de la communauté.</p>
+  </div>
+  <div class="bottom-bar"><button class="btn btn-primary" id="fill-btn" onclick="publishFill()">Publier mon top ✋</button></div>
+</div>
+
+<!-- ══════ RÉSULTAT APRÈS PUBLICATION ══════ -->
+<div id="page-success" class="page no-nav">
+  <div class="scroll" style="padding:40px 20px 40px">
+    <div style="text-align:center">
+      <div style="font-size:52px;margin-bottom:14px">✋</div>
+      <div style="font-size:28px;font-weight:900;letter-spacing:-1.2px;margin-bottom:6px" id="sc-title">Top 5 publié !</div>
+      <div style="display:flex;align-items:baseline;justify-content:center;gap:10px;margin-bottom:22px" id="sc-pts-box">
+        <div class="s-pts" id="sc-pts">+50</div>
+        <div style="font-size:14px;color:var(--t3);text-align:left">points<br>gagnés</div>
+      </div>
+    </div>
+    <div class="card" style="padding:16px;margin-bottom:16px">
+      <div class="block-lbl" id="sc-cmp-lbl">Toi vs la communauté</div>
+      <div id="sc-cmp"></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <button class="btn btn-primary" id="sc-next"></button>
+      <div class="row">
+        <button class="btn btn-ghost" style="flex:1" id="sc-see">Voir le classement</button>
+        <button class="btn btn-ghost" style="flex:1" onclick="navTo('home')">Accueil</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════ MON PROFIL ══════ -->
+<div id="page-profile" class="page">
+  <div class="profile-hero">
+    <div style="display:flex;align-items:center;gap:16px">
+      <div class="p-av" id="p-av">?</div>
+      <div style="min-width:0">
+        <div style="font-size:20px;font-weight:900;letter-spacing:-.5px" id="p-name">…</div>
+        <div style="font-size:13px;color:var(--t3);margin-top:2px" id="p-handle">…</div>
+        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+          <div class="badge-pill" id="p-country"></div>
+          <div class="badge-pill badge-orange" id="p-level-badge"></div>
+        </div>
+      </div>
+    </div>
+    <div class="p-stats">
+      <div class="p-si"><div class="p-sn" id="p-filled">0</div><div class="p-sl">Remplis</div></div>
+      <div class="p-div"></div>
+      <div class="p-si"><div class="p-sn" id="p-created">0</div><div class="p-sl">Sujets créés</div></div>
+      <div class="p-div"></div>
+      <div class="p-si"><div class="p-sn" id="p-pts">0</div><div class="p-sl">Points</div></div>
+    </div>
+  </div>
+  <div class="scroll">
+    <div class="xp-card">
+      <div style="display:flex;justify-content:space-between">
+        <span style="font-size:13px;font-weight:700">Progression</span>
+        <span style="font-size:12px;color:var(--t3)" id="p-level">Niv. 1</span>
+      </div>
+      <div class="xp-bar-bg"><div class="xp-bar-fill" id="p-xp-fill" style="width:0%"></div></div>
+      <div style="font-size:11px;color:var(--t3)" id="p-xp-next"></div>
+    </div>
+    <label class="setting">
+      <input type="checkbox" id="demo-toggle" onchange="setIncludeDemo(this.checked)">
+      <div><div style="font-size:13px;font-weight:700">Inclure les profils de démo</div><div style="font-size:11px;color:var(--t3);margin-top:2px">Réponses fictives pour tester l'appli</div></div>
+    </label>
+    <div class="slbl">Mes tops</div>
+    <div id="my-tops"></div>
+    <div style="padding:16px">
+      <button class="btn btn-ghost" onclick="doLogout()">Se déconnecter</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════ PROFIL D'UN AUTRE UTILISATEUR ══════ -->
+<div id="page-user" class="page no-nav">
+  <div class="sub-hdr">
+    <div class="back-btn" onclick="goBack()">←</div>
+    <div>
+      <div class="hdr-kicker" style="color:var(--t3)">Profil</div>
+      <div class="hdr-title" id="up-handle"></div>
+    </div>
+  </div>
+  <div class="scroll">
+    <div class="profile-hero">
+      <div style="display:flex;align-items:center;gap:16px">
+        <div class="p-av" id="up-av">?</div>
+        <div>
+          <div id="up-name" style="font-size:20px;font-weight:900;letter-spacing:-.5px"></div>
+          <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+            <div class="badge-pill" id="up-country"></div>
+            <div class="badge-pill badge-orange" id="up-level"></div>
+          </div>
+        </div>
+      </div>
+      <div class="p-stats">
+        <div class="p-si"><div class="p-sn" id="up-filled">0</div><div class="p-sl">Remplis</div></div>
+        <div class="p-div"></div>
+        <div class="p-si"><div class="p-sn" id="up-created">0</div><div class="p-sl">Sujets créés</div></div>
+        <div class="p-div"></div>
+        <div class="p-si"><div class="p-sn" id="up-pts">0</div><div class="p-sl">Points</div></div>
+      </div>
+    </div>
+    <div class="slbl">Ses tops</div>
+    <div id="up-tops" style="padding-bottom:24px"></div>
+  </div>
+</div>
+
+<!-- ══════ AFFINITÉS ══════ -->
+<div id="page-affinities" class="page">
+  <div class="screen-hdr"><div class="screen-title">Affinités</div></div>
+  <div class="scroll">
+    <div class="insight" style="margin-top:8px">
+      <div class="ins-tag">🔒 Bientôt disponible</div>
+      <div class="ins-text">« Les gens qui ont mis <strong style="color:var(--text)">Pulp Fiction</strong> dans leur top films ont aussi mis… » — le moteur de recommandations et de croisements arrive quand la base aura assez de vraies réponses.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════ FILTRES (modal) ══════ -->
+<div class="modal-bg" id="filter-modal" onclick="if(event.target===this)closeFilters()">
+  <div class="modal-sheet">
+    <div class="mhandle"></div>
+    <div style="font-size:17px;font-weight:900;margin-bottom:4px">Filtrer les réponses</div>
+    <div class="hint" style="margin:0 0 16px">S'applique aux compteurs, classements et à l'activité.</div>
+    <div id="filter-groups"></div>
+    <div class="row">
+      <button class="btn btn-ghost" style="flex:1" onclick="resetFilters()">Réinitialiser</button>
+      <button class="btn btn-primary" style="flex:1" onclick="applyFilters()">Appliquer</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<div id="nav">
+  <button class="nav-btn active" id="nav-home" onclick="navTo('home')"><div class="nav-ico">🏠</div><div class="nav-lbl">Accueil</div></button>
+  <button class="nav-btn" id="nav-search" onclick="navTo('search')"><div class="nav-ico">🔍</div><div class="nav-lbl">Sujets</div></button>
+  <button class="nav-plus" onclick="startCreate()">+</button>
+  <button class="nav-btn" id="nav-affinities" onclick="navTo('affinities')"><div class="nav-ico">💡</div><div class="nav-lbl">Affinités</div></button>
+  <button class="nav-btn" id="nav-profile" onclick="navTo('profile')"><div class="nav-ico">👤</div><div class="nav-lbl">Profil</div></button>
+</div>
+
+<script>
+// ─────────────────────────────────────────
+// CONFIG SUPABASE (la clé "anon" est publique par conception ;
+// la sécurité repose sur les règles RLS de supabase/schema.sql)
+// ─────────────────────────────────────────
+const SUPABASE_URL = 'https://nhqlirthmhkabshdepqb.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ocWxpcnRobWhrYWJzaGRlcHFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMzE0NjksImV4cCI6MjA5MjYwNzQ2OX0.eSXHyFsIFWA_5wTczBRF7IdOUKjlBoUtKVY83wl289c';
+
+const CATEGORIES = [
+  { k: 'Cinéma', i: '🎬' }, { k: 'Musique', i: '🎵' }, { k: 'Voyages', i: '✈️' }, { k: 'Sport', i: '⚽' },
+  { k: 'Séries', i: '📺' }, { k: 'Gastronomie', i: '🍕' }, { k: 'Livres', i: '📚' }, { k: 'Jeux', i: '🎮' },
+];
+const CAT_ICON  = Object.fromEntries(CATEGORIES.map(c => [c.k, c.i]));
+const COUNTRIES = ['🇫🇷 France', '🇧🇪 Belgique', '🇨🇭 Suisse', '🇨🇦 Canada', '🇬🇧 Royaume-Uni', '🇺🇸 États-Unis', '🇪🇸 Espagne', '🇮🇹 Italie', '🇩🇪 Allemagne', '🌍 Autre'];
+const GENDERS   = ['Homme', 'Femme', 'Autre'];
+const AGE_BANDS = ['Moins de 25', '25–34', '35–44', '45+'];
+const LEVELS    = [0, 100, 300, 600, 1000];
+const LEVEL_NAMES = ['Débutant', 'Explorateur', 'Curieux', 'Créateur', 'Expert'];
+
+// ─────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────
+let sb;
+let me = null;          // utilisateur Supabase Auth
+let profile = null;     // ligne de la table profiles
+let topics = [];        // tous les sujets
+let answers = [];       // toutes les réponses (léger) + démographie du répondant
+let filters = { country: null, age: null, gender: null };
+let pendingFilters = null;
+let includeDemo = readPref('includeDemo', true);
+let stack = [];         // pile de navigation
+let currentTopicId = null;
+let currentUserId = null;
+let homeTab = 'foryou';
+let searchCat = 'Tous';
+let searchSort = 'popular';
+
+// ─────────────────────────────────────────
+// UTILS
+// ─────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const LOADER = '<div class="loader"><div class="loader-dot"></div><div class="loader-dot"></div><div class="loader-dot"></div></div>';
+
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+const norm = s => (s || '').trim().replace(/\s+/g, ' ').toLowerCase();
+const fold = s => norm(s).normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+function readPref(k, def) { try { const v = localStorage.getItem('hf_' + k); return v == null ? def : JSON.parse(v); } catch (e) { return def; } }
+function writePref(k, v) { try { localStorage.setItem('hf_' + k, JSON.stringify(v)); } catch (e) {} }
+
+function timeAgo(dateStr) {
+  const diff = (Date.now() - new Date(dateStr)) / 1000;
+  if (diff < 60) return 'À l\'instant';
+  if (diff < 3600) return Math.floor(diff / 60) + ' min';
+  if (diff < 86400) return Math.floor(diff / 3600) + ' h';
+  if (diff < 604800) return Math.floor(diff / 86400) + ' j';
+  return Math.floor(diff / 604800) + ' sem.';
+}
+
+const USER_COLORS = ['#7C5CFC', '#00C48C', '#F5A623', '#FF6B9D', '#4A9EFF', '#FF5C2E'];
+function colorFor(s) {
+  let h = 0;
+  for (const c of (s || '')) h = (h * 31 + c.charCodeAt(0)) & 0xFFFF;
+  return USER_COLORS[h % USER_COLORS.length];
+}
+const initialOf = p => ((p && (p.name || p.handle)) || '?').replace('@', '')[0].toUpperCase();
+
+function levelOf(pts) {
+  let lvl = 1;
+  LEVELS.forEach((min, i) => { if (pts >= min) lvl = i + 1; });
+  return lvl;
+}
+
+function ageBand(y) {
+  if (!y) return null;
+  const a = new Date().getFullYear() - y;
+  return a < 25 ? AGE_BANDS[0] : a < 35 ? AGE_BANDS[1] : a < 45 ? AGE_BANDS[2] : AGE_BANDS[3];
+}
+
+let toastTimer;
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.style.opacity = '1';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.style.opacity = '0', 2800);
+}
+
+// Supabase renvoie 1000 lignes max par requête : on pagine.
+async function fetchAll(build) {
+  const size = 1000;
+  let out = [];
+  for (let from = 0; ; from += size) {
+    const { data, error } = await build().range(from, from + size - 1);
+    if (error) throw error;
+    out = out.concat(data);
+    if (data.length < size) return out;
+  }
+}
+
+// ─────────────────────────────────────────
+// DONNÉES
+// ─────────────────────────────────────────
+async function loadData() {
+  const [t, a] = await Promise.all([
+    fetchAll(() => sb.from('topics').select('id,title,category,created_by,is_official,created_at').order('created_at').order('id')),
+    fetchAll(() => sb.from('tops').select('id,topic_id,user_id,created_at,profiles(country,birth_year,gender,is_demo)').order('created_at').order('id')),
+  ]);
+  topics = t;
+  answers = a;
+}
+
+async function refreshProfile() {
+  const { data } = await sb.from('profiles').select('*').eq('id', me.id).maybeSingle();
+  if (data) profile = data;
+}
+
+const topicById = id => topics.find(t => t.id === id);
+const myAnswer  = topicId => answers.find(a => a.topic_id === topicId && a.user_id === me.id);
+const myTopicIds = () => new Set(answers.filter(a => a.user_id === me.id).map(a => a.topic_id));
+
+function matchesFilters(p) {
+  if (!p) return false;
+  if (!includeDemo && p.is_demo) return false;
+  if (filters.country && p.country !== filters.country) return false;
+  if (filters.gender && p.gender !== filters.gender) return false;
+  if (filters.age && ageBand(p.birth_year) !== filters.age) return false;
+  return true;
+}
+const visibleAnswers = () => answers.filter(a => matchesFilters(a.profiles));
+
+function countByTopic() {
+  const m = {};
+  visibleAnswers().forEach(a => { m[a.topic_id] = (m[a.topic_id] || 0) + 1; });
+  return m;
+}
+
+async function fetchTopicItems(topicId) {
+  return fetchAll(() => sb.from('top_items')
+    .select('top_id,rank,content,tops!inner(topic_id)')
+    .eq('tops.topic_id', topicId)
+    .order('top_id').order('rank'));
+}
+
+// Agrège les items : score = 5 pts pour un #1 … 1 pt pour un #5
+function aggregate(items, allowedTopIds) {
+  const m = new Map();
+  const tops = new Set();
+  for (const it of items) {
+    if (!allowedTopIds.has(it.top_id)) continue;
+    tops.add(it.top_id);
+    const k = norm(it.content);
+    let e = m.get(k);
+    if (!e) m.set(k, e = { key: k, content: it.content, n: 0, score: 0, first: 0 });
+    e.n++;
+    e.score += 6 - it.rank;
+    if (it.rank === 1) e.first++;
+  }
+  return { total: tops.size, rows: [...m.values()].sort((a, b) => b.score - a.score || b.n - a.n) };
+}
+
+// ─────────────────────────────────────────
+// NAVIGATION (pile + bouton retour Android)
+// ─────────────────────────────────────────
+const TABS = ['home', 'search', 'affinities', 'profile'];
+const RENDERERS = {
+  home: () => renderHome(),
+  search: () => renderSearch(),
+  profile: () => renderProfile(),
+  topic: () => renderTopic(currentTopicId),
+  user: () => renderUser(currentUserId),
+};
+
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  $('page-' + name).classList.add('active');
+  $('nav').style.display = TABS.includes(name) ? 'flex' : 'none';
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.id === 'nav-' + name));
+  window.scrollTo(0, 0);
+}
+
+function navTo(tab) {
+  stack = [tab];
+  showPage(tab);
+  RENDERERS[tab] && RENDERERS[tab]();
+}
+
+function pushPage(name) {
+  stack.push(name);
+  history.pushState({ hf: stack.length }, '');
+  showPage(name);
+}
+
+function replacePage(name) {
+  stack[stack.length - 1] = name;
+  showPage(name);
+}
+
+function goBack() { history.back(); }
+
+window.addEventListener('popstate', () => {
+  if (!me) return;
+  if (stack.length > 1) stack.pop();
+  const prev = stack[stack.length - 1] || 'home';
+  showPage(prev);
+  RENDERERS[prev] && RENDERERS[prev]();
+});
+
+// ─────────────────────────────────────────
+// AUTH
+// ─────────────────────────────────────────
+function fillSignupSelects() {
+  $('su-country').innerHTML = '<option value="">🌍 Pays…</option>' + COUNTRIES.map(c => `<option>${c}</option>`).join('');
+  const y = new Date().getFullYear();
+  let years = '<option value="">Année de naissance…</option>';
+  for (let i = y - 13; i >= 1930; i--) years += `<option>${i}</option>`;
+  $('su-year').innerHTML = years;
+  $('su-gender').innerHTML = '<option value="">Genre…</option>' + GENDERS.map(g => `<option>${g}</option>`).join('');
+}
+
+function switchAuthTab(tab) {
+  $('auth-login').style.display  = tab === 'login'  ? '' : 'none';
+  $('auth-signup').style.display = tab === 'signup' ? '' : 'none';
+  $('tab-login-btn').classList.toggle('active',  tab === 'login');
+  $('tab-signup-btn').classList.toggle('active', tab === 'signup');
+  $('auth-msg').style.display = 'none';
+}
+
+function authMsg(msg, ok) {
+  const el = $('auth-msg');
+  el.textContent = msg;
+  el.className = 'msg ' + (ok ? 'msg-ok' : 'msg-err');
+  el.style.display = '';
+}
+
+async function doLogin() {
+  const email = $('login-email').value.trim();
+  const pwd = $('login-pwd').value;
+  if (!email || !pwd) return authMsg('Email et mot de passe requis');
+  const { data, error } = await sb.auth.signInWithPassword({ email, password: pwd });
+  if (error) return authMsg(error.message === 'Invalid login credentials' ? 'Email ou mot de passe incorrect' : error.message);
+  onAuthSuccess(data.user);
+}
+
+async function doSignup() {
+  const name = $('su-name').value.trim();
+  const handle = $('su-handle').value.trim().replace(/^@/, '');
+  const email = $('su-email').value.trim();
+  const pwd = $('su-pwd').value;
+  const country = $('su-country').value;
+  const year = $('su-year').value;
+  const gender = $('su-gender').value;
+  if (!name || !handle || !email || !pwd) return authMsg('Prénom, pseudo, email et mot de passe sont obligatoires');
+  if (!/^[A-Za-z0-9_.]{2,20}$/.test(handle)) return authMsg('Pseudo : 2 à 20 caractères, lettres, chiffres, _ ou .');
+  if (pwd.length < 6) return authMsg('Mot de passe trop court (6 caractères minimum)');
+
+  // Le profil est créé automatiquement par la base (trigger) à partir de ces métadonnées
+  const { data, error } = await sb.auth.signUp({
+    email, password: pwd,
+    options: { data: { name, handle, country, birth_year: year, gender } },
+  });
+  if (error) return authMsg(error.message);
+  if (!data.session) {
+    switchAuthTab('login');
+    $('login-email').value = email;
+    return authMsg('Compte créé ! Clique sur le lien reçu par email, puis connecte-toi.', true);
+  }
+  onAuthSuccess(data.user);
+}
+
+async function doLogout() {
+  await sb.auth.signOut();
+}
+
+function onSignedOut() {
+  me = null; profile = null; topics = []; answers = []; stack = [];
+  showPage('auth');
+}
+
+async function onAuthSuccess(user) {
+  me = user;
+  showPage('loading');
+  $('loading-msg').innerHTML = '';
+  document.querySelector('#page-loading .loader').style.display = '';
+  try {
+    await Promise.all([refreshProfile(), loadData()]);
+  } catch (e) {
+    return showSetupError(e);
+  }
+  if (!profile) return showSetupError({ message: 'Profil introuvable pour ce compte.' });
+  history.replaceState({ hf: 1 }, '');
+  navTo('home');
+}
+
+function showSetupError(e) {
+  console.error(e);
+  $('loading-msg').innerHTML = `<div class="msg msg-err" style="margin-top:12px;text-align:left">
+    <strong>La base de données n'est pas prête.</strong><br>
+    Exécute <code>supabase/schema.sql</code> puis <code>supabase/seed.sql</code> dans Supabase &gt; SQL Editor (voir README).<br><br>
+    <small>Détail : ${esc(e?.message || e)}</small></div>
+    <button class="btn btn-ghost" style="margin-top:8px" onclick="doLogout()">Se déconnecter</button>`;
+  document.querySelector('#page-loading .loader').style.display = 'none';
+}
+
+// ─────────────────────────────────────────
+// ACCUEIL
+// ─────────────────────────────────────────
+function setHomeTab(tab) {
+  homeTab = tab;
+  $('htab-foryou').classList.toggle('active', tab === 'foryou');
+  $('htab-activity').classList.toggle('active', tab === 'activity');
+  $('home-foryou').style.display = tab === 'foryou' ? '' : 'none';
+  $('home-activity').style.display = tab === 'activity' ? '' : 'none';
+  if (tab === 'activity') renderActivity();
+}
+
+function dailyTopic() {
+  if (!topics.length) return null;
+  const official = topics.filter(t => t.is_official);
+  const pool = (official.length ? official : topics).slice().sort((a, b) => a.id < b.id ? -1 : 1);
+  const day = Math.floor(Date.now() / 86400000);
+  return pool[(day * 7919) % pool.length];
+}
+
+function topicRow(t, counts, mine) {
+  const n = counts[t.id] || 0;
+  return `<div class="topic-row" onclick="openTopic('${t.id}')">
+    <div class="topic-ico">${CAT_ICON[t.category] || '⭐'}</div>
+    <div style="flex:1;min-width:0">
+      <div class="topic-ttl">${esc(t.title)}</div>
+      <div class="topic-meta">${esc(t.category)} · ${n} réponse${n > 1 ? 's' : ''}</div>
+    </div>
+    ${mine.has(t.id) ? '<div class="done-badge">✓ Fait</div>' : '<div style="font-size:16px;color:var(--t3)">›</div>'}
+  </div>`;
+}
+
+function renderHome() {
+  $('home-av').textContent = initialOf(profile);
+  setHomeTab(homeTab);
+  const counts = countByTopic();
+  const mine = myTopicIds();
+
+  const d = dailyTopic();
+  if (d) {
+    const done = mine.has(d.id);
+    $('daily-box').innerHTML = `
+    <div style="margin:0 16px 6px;background:#1A1A0E;border:1px solid rgba(0,196,140,.2);border-radius:16px;padding:18px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:5px;background:var(--gd);border-radius:20px;padding:4px 10px">
+          <div style="width:6px;height:6px;border-radius:3px;background:var(--green)"></div>
+          <span style="font-size:10px;font-weight:700;color:var(--green)">Défi du jour</span>
+        </div>
+        <span style="margin-left:auto;font-size:11px;color:var(--t3);font-weight:600">${countdown()}</span>
+      </div>
+      <div style="font-size:17px;font-weight:900;letter-spacing:-.3px;margin-bottom:4px">${CAT_ICON[d.category] || ''} ${esc(d.title)}</div>
+      <div style="font-size:12px;color:var(--t3);margin-bottom:14px">${counts[d.id] || 0} personnes l'ont déjà rempli</div>
+      <button class="btn btn-green" style="height:44px;border-radius:12px;font-size:14px" onclick="${done ? `openTopic('${d.id}')` : `openFillById('${d.id}')`}">
+        ${done ? '✓ Relevé — voir les résultats' : 'Relever le défi →'}</button>
+    </div>`;
+  }
+
+  const todo = topics.filter(t => !mine.has(t.id) && (!d || t.id !== d.id))
+    .sort((a, b) => (counts[b.id] || 0) - (counts[a.id] || 0))
+    .slice(0, 8);
+  $('todo-list').innerHTML = todo.length
+    ? todo.map(t => topicRow(t, counts, mine)).join('')
+    : '<div class="empty"><div class="empty-ico">🏆</div>Tu as rempli tous les sujets !<br>Propose le tien avec le bouton +</div>';
+}
+
+function countdown() {
+  const now = new Date();
+  const midnight = new Date(now); midnight.setHours(24, 0, 0, 0);
+  const diff = Math.floor((midnight - now) / 1000);
+  return `⏰ ${Math.floor(diff / 3600)} h ${Math.floor((diff % 3600) / 60)} min`;
+}
+
+async function renderActivity() {
+  const box = $('home-activity');
+  box.innerHTML = LOADER;
+  const { data, error } = await sb.from('tops')
+    .select('id,topic_id,user_id,created_at,profiles(id,name,handle,country,birth_year,gender,is_demo),likes(user_id),top_items(rank,content)')
+    .neq('user_id', me.id)
+    .order('created_at', { ascending: false })
+    .limit(60);
+  if (error) { box.innerHTML = '<div class="empty"><div class="empty-ico">😕</div>Erreur de chargement</div>'; return; }
+  const rows = data.filter(t => matchesFilters(t.profiles)).slice(0, 25);
+  box.innerHTML = rows.length
+    ? rows.map(t => topCard(t, true)).join('')
+    : '<div class="empty"><div class="empty-ico">✋</div>Pas encore d\'activité.</div>';
+}
+
+// Carte "réponse" (le top 5 d'une personne)
+function topCard(t, withTopic) {
+  const topic = topicById(t.topic_id) || { title: '?', category: '' };
+  const items = [...(t.top_items || [])].sort((a, b) => a.rank - b.rank);
+  const p = t.profiles || {};
+  const likes = t.likes || [];
+  const liked = likes.some(l => l.user_id === me.id);
+  const done = !!myAnswer(t.topic_id);
+  return `<div class="top5-card card">
+    <div class="ch">
+      <div class="cav" style="background:${colorFor(p.handle)}" onclick="openUser('${p.id}')">${initialOf(p)}</div>
+      <div>
+        <div class="cu" onclick="openUser('${p.id}')">${esc(p.handle)}</div>
+        <div class="ct">${timeAgo(t.created_at)}</div>
+      </div>
+      ${withTopic ? `<div class="cc">${esc(topic.category)}</div>` : ''}
+    </div>
+    ${withTopic ? `<div class="ctitle" onclick="openTopic('${t.topic_id}')">${esc(topic.title)} <span style="font-size:12px;color:var(--t3)">›</span></div>` : ''}
+    <ul class="clist">
+      ${items.map((it, i) => `<li><div class="rank ${i === 0 ? 'r1' : ''}">${it.rank}</div>${esc(it.content)}</li>`).join('')}
+    </ul>
+    <div class="ca">
+      <button class="act ${liked ? 'liked' : ''}" data-n="${likes.length}" onclick="toggleLike('${t.id}',this)">♥ ${likes.length}</button>
+      ${withTopic ? (done
+        ? `<button class="act" style="margin-left:auto" onclick="openTopic('${t.topic_id}')">✓ Comparer</button>`
+        : `<button class="act-reply" onclick="openFillById('${t.topic_id}')">Faire le mien →</button>`) : ''}
+    </div>
+  </div>`;
+}
+
+async function toggleLike(topId, btn) {
+  const liked = btn.classList.contains('liked');
+  let n = parseInt(btn.dataset.n, 10) || 0;
+  n += liked ? -1 : 1;
+  btn.dataset.n = n;
+  btn.textContent = '♥ ' + n;
+  btn.classList.toggle('liked', !liked);
+  const { error } = liked
+    ? await sb.from('likes').delete().eq('top_id', topId).eq('user_id', me.id)
+    : await sb.from('likes').insert({ top_id: topId, user_id: me.id });
+  if (error) toast('Erreur : ' + error.message);
+}
+
+// ─────────────────────────────────────────
+// RECHERCHE / SUJETS
+// ─────────────────────────────────────────
+function renderSearchCats() {
+  const cats = [{ k: 'Tous', i: '' }, ...CATEGORIES];
+  $('search-cats').innerHTML =
+    cats.map(c => `<div class="fc ${c.k === searchCat ? 'active' : ''}" onclick="setCat('${c.k}')">${c.i} ${c.k}</div>`).join('') +
+    '<div class="fc filter-btn" onclick="openFilters()">🌍 Filtres</div>';
+  updateFilterButtons();
+}
+
+function setCat(cat) { searchCat = cat; renderSearch(); }
+
+function setSort(btn) {
+  document.querySelectorAll('.stab').forEach(t => t.classList.toggle('active', t === btn));
+  searchSort = btn.dataset.sort;
+  renderSearch();
+}
+
+function renderSearch() {
+  renderSearchCats();
+  const q = fold($('search-q').value);
+  const counts = countByTopic();
+  const mine = myTopicIds();
+  let list = topics.filter(t => (searchCat === 'Tous' || t.category === searchCat) && (!q || fold(t.title).includes(q) || fold(t.category).includes(q)));
+
+  if (searchSort === 'popular') {
+    list.sort((a, b) => (counts[b.id] || 0) - (counts[a.id] || 0));
+  } else if (searchSort === 'recent') {
+    list.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  } else {
+    // Suggérés : sujets non remplis, dans tes catégories favorites d'abord
+    const affinity = {};
+    answers.filter(a => a.user_id === me.id).forEach(a => {
+      const c = topicById(a.topic_id)?.category;
+      if (c) affinity[c] = (affinity[c] || 0) + 1;
+    });
+    list = list.filter(t => !mine.has(t.id));
+    list.sort((a, b) => ((affinity[b.category] || 0) * 100 + (counts[b.id] || 0)) - ((affinity[a.category] || 0) * 100 + (counts[a.id] || 0)));
+  }
+
+  $('search-results').innerHTML = list.length
+    ? list.map(t => topicRow(t, counts, mine)).join('')
+    : `<div class="empty"><div class="empty-ico">🔍</div>Aucun sujet trouvé.<br><br>
+       <button class="btn btn-primary" style="width:auto;padding:0 20px;height:44px" onclick="startCreate()">Créer ce sujet +</button></div>`;
+}
+
+// ─────────────────────────────────────────
+// FILTRES
+// ─────────────────────────────────────────
+const FILTER_GROUPS = [
+  { key: 'country', label: 'Pays', values: COUNTRIES },
+  { key: 'age', label: "Tranche d'âge", values: AGE_BANDS },
+  { key: 'gender', label: 'Genre', values: GENDERS },
+];
+
+function openFilters() {
+  pendingFilters = { ...filters };
+  renderFilterGroups();
+  $('filter-modal').classList.add('open');
+}
+function closeFilters() { $('filter-modal').classList.remove('open'); }
+
+function renderFilterGroups() {
+  $('filter-groups').innerHTML = FILTER_GROUPS.map(g => `
+    <div class="mgroup">${g.label}</div>
+    <div class="chip-group">
+      <div class="copt ${!pendingFilters[g.key] ? 'sel' : ''}" onclick="pickFilter('${g.key}',null)">Tous</div>
+      ${g.values.map((v, i) => `<div class="copt ${pendingFilters[g.key] === v ? 'sel' : ''}" onclick="pickFilter('${g.key}',${i})">${esc(v)}</div>`).join('')}
+    </div>`).join('');
+}
+
+function pickFilter(key, idx) {
+  const g = FILTER_GROUPS.find(x => x.key === key);
+  pendingFilters[key] = idx == null ? null : g.values[idx];
+  renderFilterGroups();
+}
+
+function resetFilters() { pendingFilters = { country: null, age: null, gender: null }; renderFilterGroups(); }
+
+function applyFilters() {
+  filters = { ...pendingFilters };
+  closeFilters();
+  updateFilterButtons();
+  const cur = stack[stack.length - 1];
+  RENDERERS[cur] && RENDERERS[cur]();
+}
+
+function updateFilterButtons() {
+  const n = Object.values(filters).filter(Boolean).length;
+  document.querySelectorAll('.filter-btn').forEach(b => {
+    b.textContent = n ? `🌍 Filtres (${n})` : '🌍 Filtres';
+    b.classList.toggle('on', n > 0);
+  });
+}
+
+function setIncludeDemo(v) {
+  includeDemo = v;
+  writePref('includeDemo', v);
+}
+
+// ─────────────────────────────────────────
+// DÉTAIL D'UN SUJET
+// ─────────────────────────────────────────
+function openTopic(id) {
+  currentTopicId = id;
+  pushPage('topic');
+  renderTopic(id);
+}
+
+async function renderTopic(id) {
+  const t = topicById(id);
+  if (!t) return;
+  $('tp-cat').textContent = (CAT_ICON[t.category] || '') + ' ' + t.category;
+  $('tp-title').textContent = t.title;
+  updateFilterButtons();
+  const mineAns = myAnswer(id);
+  $('tp-fill-btn').textContent = mineAns ? 'Modifier mon top 5' : 'Faire mon top 5 →';
+  $('tp-fill-btn').onclick = () => openFill(t);
+
+  const vis = visibleAnswers().filter(a => a.topic_id === id);
+  const n = vis.length;
+  $('tp-count').textContent = `${n} réponse${n > 1 ? 's' : ''}`;
+  $('tp-mine').innerHTML = '';
+  $('tp-agg').innerHTML = LOADER;
+  $('tp-recent').innerHTML = '';
+
+  let items, recent;
+  try {
+    [items, { data: recent }] = await Promise.all([
+      fetchTopicItems(id),
+      sb.from('tops').select('id,topic_id,user_id,created_at,profiles(id,name,handle,country,birth_year,gender,is_demo),likes(user_id)')
+        .eq('topic_id', id).neq('user_id', me.id).order('created_at', { ascending: false }).limit(40),
+    ]);
+  } catch (e) {
+    $('tp-agg').innerHTML = '<div class="empty">Erreur de chargement</div>';
+    return;
+  }
+  if (currentTopicId !== id) return;
+
+  // Mon top
+  const myKeys = new Set();
+  if (mineAns) {
+    const myItems = items.filter(it => it.top_id === mineAns.id).sort((a, b) => a.rank - b.rank);
+    myItems.forEach(it => myKeys.add(norm(it.content)));
+    $('tp-mine').innerHTML = `<div class="block"><div class="block-lbl">Mon top 5</div>
+      <ul class="clist" style="padding:0">${myItems.map(it => `<li><div class="rank ${it.rank === 1 ? 'r1' : ''}">${it.rank}</div>${esc(it.content)}</li>`).join('')}</ul></div>`;
+  }
+
+  // Classement agrégé
+  const agg = aggregate(items, new Set(vis.map(a => a.id)));
+  $('tp-agg').innerHTML = agg.rows.length
+    ? agg.rows.slice(0, 10).map((r, i) => {
+        const pct = Math.round(r.n / agg.total * 100);
+        return `<div class="agg-row ${myKeys.has(r.key) ? 'mine-hl' : ''}">
+          <div class="agg-top">
+            <span class="agg-name">${i + 1}. ${esc(r.content)}</span>
+            <span class="agg-num">${pct} %${r.first ? ` · ${r.first}× #1` : ''}</span>
+          </div>
+          <div class="bar-bg"><div class="bar-fill" style="width:${pct}%"></div></div>
+        </div>`;
+      }).join('') + '<p class="hint" style="margin-bottom:8px">% = part des tops qui citent cette réponse. En orange : tes choix.</p>'
+    : '<div style="font-size:13px;color:var(--t3);padding:4px 0 12px">Personne n\'a encore répondu avec ces filtres. Sois le premier !</div>';
+
+  // Réponses récentes des autres
+  const byTop = {};
+  items.forEach(it => (byTop[it.top_id] = byTop[it.top_id] || []).push(it));
+  const rows = (recent || []).filter(r => matchesFilters(r.profiles)).slice(0, 10);
+  $('tp-recent').innerHTML = rows.length
+    ? rows.map(r => topCard({ ...r, top_items: byTop[r.id] || [] }, false)).join('')
+    : '<div style="font-size:13px;color:var(--t3);padding:0 20px 16px">Aucune réponse pour l\'instant.</div>';
+}
+
+// ─────────────────────────────────────────
+// REMPLIR UN TOP (avec autocomplétion)
+// ─────────────────────────────────────────
+let fillTopic = null;
+let fillExisting = null;   // ma réponse existante (modification)
+let fillItems = ['', '', '', '', ''];
+let fillPool = [];
+
+function openFillById(id) {
+  const t = topicById(id);
+  if (t) openFill(t);
+}
+
+async function openFill(topic, replace) {
+  fillTopic = topic;
+  fillExisting = myAnswer(topic.id) || null;
+  fillItems = ['', '', '', '', ''];
+  fillPool = [];
+  $('fill-cat').textContent = (CAT_ICON[topic.category] || '') + ' ' + topic.category;
+  $('fill-title').textContent = topic.title;
+  $('fill-btn').textContent = fillExisting ? 'Enregistrer ✋' : 'Publier mon top ✋';
+  $('fill-btn').disabled = false;
+  $('fill-rows').innerHTML = LOADER;
+  replace ? replacePage('fill') : pushPage('fill');
+
+  const [sugg, items] = await Promise.all([
+    sb.from('topic_suggestions').select('content,weight').eq('topic_id', topic.id),
+    fetchTopicItems(topic.id).catch(() => []),
+  ]);
+  if (fillTopic !== topic) return;
+
+  // Pool de suggestions : liste de départ + réponses déjà données par la communauté
+  const pool = new Map();
+  const add = (content, w) => {
+    const k = norm(content);
+    if (!k) return;
+    const e = pool.get(k);
+    if (e) e.score += w; else pool.set(k, { content: content.trim(), key: k, f: fold(content), score: w });
+  };
+  (sugg.data || []).forEach(s => add(s.content, s.weight));
+  items.forEach(it => add(it.content, 3));
+  fillPool = [...pool.values()].sort((a, b) => b.score - a.score);
+
+  if (fillExisting) {
+    items.filter(it => it.top_id === fillExisting.id).forEach(it => { fillItems[it.rank - 1] = it.content; });
+  }
+  renderFillRows();
+}
+
+function renderFillRows() {
+  const box = $('fill-rows');
+  box.innerHTML = '';
+  const inputs = [];
+  for (let i = 0; i < 5; i++) {
+    const row = document.createElement('div');
+    row.className = 'rank-row';
+    const rn = document.createElement('div');
+    rn.className = 'rank-n' + (fillItems[i] ? ' ok' : '');
+    rn.textContent = i + 1;
+    const acBox = document.createElement('div');
+    acBox.className = 'ac-box';
+    const inp = document.createElement('input');
+    inp.className = 'input';
+    inp.value = fillItems[i];
+    inp.placeholder = 'Ton #' + (i + 1) + '…';
+    inp.autocomplete = 'off';
+    inp.maxLength = 100;
+    inp.enterKeyHint = i < 4 ? 'next' : 'done';
+    const list = document.createElement('div');
+    list.className = 'ac-list';
+    acBox.append(inp, list);
+    row.append(rn, acBox);
+    box.appendChild(row);
+    inputs.push(inp);
+
+    const focusNext = () => { if (inputs[i + 1]) inputs[i + 1].focus(); else inp.blur(); };
+    const refresh = () => {
+      const q = fold(inp.value);
+      const taken = new Set(fillItems.map((v, j) => j !== i ? norm(v) : '').filter(Boolean));
+      const cur = norm(inp.value);
+      let m = fillPool.filter(p => !taken.has(p.key) && p.key !== cur && (!q || p.f.includes(q)));
+      if (q) m.sort((a, b) => (b.f.startsWith(q) - a.f.startsWith(q)) || (b.score - a.score));
+      m = m.slice(0, 6);
+      list.innerHTML = '';
+      m.forEach(p => {
+        const o = document.createElement('div');
+        o.className = 'ac-opt';
+        o.textContent = p.content;
+        o.addEventListener('pointerdown', e => {
+          e.preventDefault();
+          inp.value = p.content;
+          fillItems[i] = p.content;
+          rn.className = 'rank-n ok';
+          list.style.display = 'none';
+          focusNext();
+        });
+        list.appendChild(o);
+      });
+      list.style.display = m.length && document.activeElement === inp ? 'block' : 'none';
+    };
+    inp.addEventListener('input', () => {
+      fillItems[i] = inp.value;
+      rn.className = 'rank-n' + (inp.value.trim() ? ' ok' : '');
+      refresh();
+    });
+    inp.addEventListener('focus', () => {
+      refresh();
+      setTimeout(() => row.scrollIntoView({ block: 'start', behavior: 'smooth' }), 250);
+    });
+    inp.addEventListener('blur', () => setTimeout(() => { list.style.display = 'none'; }, 120));
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); list.style.display = 'none'; focusNext(); } });
+  }
+}
+
+async function publishFill() {
+  // On compacte : les cases vides sont ignorées, le rang suit l'ordre
+  const vals = fillItems.map(v => v.trim().replace(/\s+/g, ' ')).filter(Boolean);
+  if (vals.length < 3) return toast('Remplis au moins 3 entrées !');
+  if (new Set(vals.map(norm)).size !== vals.length) return toast('Tu as mis deux fois la même réponse');
+
+  const btn = $('fill-btn');
+  btn.disabled = true;
+  btn.textContent = 'Publication…';
+  const isNew = !fillExisting;
+  try {
+    let topId;
+    if (isNew) {
+      const { data, error } = await sb.from('tops').insert({ topic_id: fillTopic.id, user_id: me.id }).select('id').single();
+      if (error) throw error;
+      topId = data.id;
+    } else {
+      topId = fillExisting.id;
+      const { error } = await sb.from('top_items').delete().eq('top_id', topId);
+      if (error) throw error;
+    }
+    const { error: itemsErr } = await sb.from('top_items').insert(vals.map((content, i) => ({ top_id: topId, rank: i + 1, content })));
+    if (itemsErr) {
+      if (isNew) await sb.from('tops').delete().eq('id', topId);
+      throw itemsErr;
+    }
+    await Promise.all([loadData(), refreshProfile()]);
+    replacePage('success');
+    renderSuccess(fillTopic, vals, isNew);
+  } catch (err) {
+    toast('Erreur : ' + (err?.message ?? 'inconnue'));
+    btn.disabled = false;
+    btn.textContent = isNew ? 'Publier mon top ✋' : 'Enregistrer ✋';
+  }
+}
+
+// ─────────────────────────────────────────
+// RÉSULTAT : TOI VS LA COMMUNAUTÉ
+// ─────────────────────────────────────────
+async function renderSuccess(topic, myVals, isNew) {
+  $('sc-title').textContent = isNew ? 'Top 5 publié !' : 'Top 5 mis à jour !';
+  $('sc-pts-box').style.display = isNew ? 'flex' : 'none';
+  $('sc-pts').textContent = '+50';
+  $('sc-cmp').innerHTML = LOADER;
+  $('sc-see').onclick = () => {
+    // Si on venait déjà de la page de ce sujet, on y retourne simplement
+    if (stack[stack.length - 2] === 'topic' && currentTopicId === topic.id) return goBack();
+    currentTopicId = topic.id;
+    replacePage('topic');
+    renderTopic(topic.id);
+  };
+
+  // Sujet suivant : même catégorie d'abord, puis le plus populaire
+  const counts = countByTopic();
+  const mine = myTopicIds();
+  const next = topics.filter(t => !mine.has(t.id))
+    .sort((a, b) => ((b.category === topic.category) - (a.category === topic.category)) || ((counts[b.id] || 0) - (counts[a.id] || 0)))[0];
+  const nb = $('sc-next');
+  if (next) {
+    nb.style.display = '';
+    nb.innerHTML = `Suivant : ${esc(next.title)} →`;
+    nb.style.fontSize = '14px';
+    nb.onclick = () => openFill(next, true);
+  } else {
+    nb.style.display = 'none';
+  }
+
+  const items = await fetchTopicItems(topic.id).catch(() => []);
+  const others = visibleAnswers().filter(a => a.topic_id === topic.id && a.user_id !== me.id);
+  const otherIds = new Set(others.map(a => a.id));
+  const cited = {};
+  items.forEach(it => {
+    if (!otherIds.has(it.top_id)) return;
+    const k = norm(it.content);
+    (cited[k] = cited[k] || new Set()).add(it.top_id);
+  });
+  const total = others.length;
+  if (!total) {
+    $('sc-cmp-lbl').textContent = 'Toi vs la communauté';
+    $('sc-cmp').innerHTML = '<div style="font-size:14px;color:var(--t2);line-height:1.5">Tu es le premier à répondre à ce sujet ! Les comparaisons apparaîtront dès que d\'autres auront répondu.</div>';
+    return;
+  }
+  $('sc-cmp-lbl').innerHTML = `Toi vs la communauté <span class="count-pill">${total} autre${total > 1 ? 's' : ''}</span>`;
+  const stats = myVals.map(v => ({ v, pct: Math.round(((cited[norm(v)]?.size) || 0) / total * 100) }));
+  const rarest = stats.reduce((a, b) => b.pct < a.pct ? b : a);
+  $('sc-cmp').innerHTML = stats.map((s, i) => `
+    <div class="cmp">
+      <div class="rank ${i === 0 ? 'r1' : ''}">${i + 1}</div>
+      <div class="cmp-name">${esc(s.v)}</div>
+      <div class="cmp-pct ${s.pct >= 30 ? 'hi' : 'lo'}">${s.pct === 0 ? 'Unique !' : s.pct + ' %'}</div>
+    </div>`).join('') +
+    `<p class="hint" style="margin-top:10px">% des autres qui ont aussi ce choix dans leur top.
+     ${rarest.pct < 30 ? `Ton choix le plus original : <strong style="color:var(--purple)">${esc(rarest.v)}</strong>.` : 'Tu as des goûts très partagés !'}</p>`;
+}
+
+// ─────────────────────────────────────────
+// CRÉER UN SUJET
+// ─────────────────────────────────────────
+let createStep = 1;
+let createCategory = null;
+
+function startCreate() {
+  createStep = 1;
+  createCategory = null;
+  $('top-title').value = '';
+  $('similar-box').innerHTML = '';
+  $('cat-grid').innerHTML = CATEGORIES.map(c =>
+    `<div class="cat-chip" data-cat="${c.k}" onclick="pickCategory(this)"><div class="ci">${c.i}</div><span class="cl">${c.k}</span></div>`).join('');
+  showCreateStep(1);
+  pushPage('create');
+}
+
+function pickCategory(el) {
+  document.querySelectorAll('.cat-chip').forEach(c => c.classList.toggle('sel', c === el));
+  createCategory = el.dataset.cat;
+}
+
+function showCreateStep(step) {
+  createStep = step;
+  $('cs1').style.display = step === 1 ? '' : 'none';
+  $('cs2').style.display = step === 2 ? '' : 'none';
+  $('cs-lbl').textContent = `Étape ${step} sur 2`;
+  $('cs-ttl').textContent = step === 1 ? 'Choisis une catégorie' : 'Formule ton sujet';
+  $('cs-prog').style.width = step === 1 ? '50%' : '100%';
+  $('cs-next').textContent = step === 1 ? 'Suivant →' : 'Créer et remplir →';
+  $('cs-next').disabled = false;
+  if (step === 2) setTimeout(() => $('top-title').focus(), 100);
+}
+
+function createBack() {
+  if (createStep > 1) showCreateStep(1); else goBack();
+}
+
+function cleanTitle(raw) {
+  let t = raw.trim().replace(/\s+/g, ' ');
+  if (t && !/^top\s*5\b/i.test(t)) t = 'Top 5 ' + t.charAt(0).toLowerCase() + t.slice(1);
+  return t.replace(/^top\s*5\b/i, 'Top 5');
+}
+
+// Évite les doublons : montre les sujets proches déjà existants
+function renderSimilar() {
+  const words = fold($('top-title').value).replace(/^top\s*5/, '').split(/[^a-z0-9]+/).filter(w => w.length >= 4);
+  const box = $('similar-box');
+  if (!words.length) { box.innerHTML = ''; return; }
+  const matches = topics
+    .map(t => ({ t, s: words.filter(w => fold(t.title).includes(w)).length }))
+    .filter(x => x.s > 0).sort((a, b) => b.s - a.s).slice(0, 4);
+  if (!matches.length) { box.innerHTML = ''; return; }
+  const counts = countByTopic();
+  box.innerHTML = '<div class="slbl" style="padding:18px 0 8px">Existe peut-être déjà</div>' +
+    matches.map(({ t }) => topicRow(t, counts, myTopicIds()).replace('class="topic-row"', 'class="topic-row" style="margin:0 0 8px"')).join('');
+}
+
+async function createNext() {
+  if (createStep === 1) {
+    if (!createCategory) return toast('Choisis une catégorie');
+    return showCreateStep(2);
+  }
+  const title = cleanTitle($('top-title').value);
+  if (title.length < 10) return toast('Ton titre est un peu court !');
+  const existing = topics.find(t => norm(t.title) === norm(title));
+  if (existing) { toast('Ce sujet existe déjà — à toi de le remplir !'); return openFill(existing, true); }
+
+  const btn = $('cs-next');
+  btn.disabled = true;
+  btn.textContent = 'Création…';
+  const { data, error } = await sb.from('topics')
+    .insert({ title, category: createCategory, created_by: me.id })
+    .select('id,title,category,created_by,is_official,created_at').single();
+  if (error) {
+    btn.disabled = false;
+    btn.textContent = 'Créer et remplir →';
+    return toast(error.code === '23505' ? 'Ce sujet existe déjà' : 'Erreur : ' + error.message);
+  }
+  topics.push(data);
+  refreshProfile();
+  openFill(data, true);
+}
+
+// ─────────────────────────────────────────
+// PROFILS
+// ─────────────────────────────────────────
+function fillProfileHeader(prefix, p) {
+  const pts = p.points ?? 0;
+  const lvl = levelOf(pts);
+  $(prefix + 'av').textContent = initialOf(p);
+  $(prefix + 'av').style.background = colorFor(p.handle);
+  $(prefix + 'name').textContent = p.name || '';
+  $(prefix + 'country').textContent = p.country || '🌍';
+  $(prefix + 'filled').textContent = p.tops_filled ?? 0;
+  $(prefix + 'created').textContent = p.tops_created ?? 0;
+  $(prefix + 'pts').textContent = pts;
+  return lvl;
+}
+
+function myTopRows(userId) {
+  const list = answers.filter(a => a.user_id === userId)
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    .map(a => ({ a, t: topicById(a.topic_id) })).filter(x => x.t);
+  if (!list.length) return '<div class="empty"><div class="empty-ico">✋</div>Aucun top pour l\'instant</div>';
+  return list.map(({ a, t }) => `
+    <div class="topic-row" onclick="openTopic('${t.id}')">
+      <div class="topic-ico">${CAT_ICON[t.category] || '⭐'}</div>
+      <div style="flex:1;min-width:0"><div class="topic-ttl">${esc(t.title)}</div><div class="topic-meta">${esc(t.category)} · ${timeAgo(a.created_at)}</div></div>
+      <div style="font-size:16px;color:var(--t3)">›</div>
+    </div>`).join('');
+}
+
+async function renderProfile() {
+  await refreshProfile();
+  const lvl = fillProfileHeader('p-', profile);
+  $('p-handle').textContent = profile.handle;
+  $('p-level-badge').textContent = `Niv. ${lvl} · ${LEVEL_NAMES[lvl - 1]}`;
+  $('p-level').textContent = 'Niv. ' + lvl;
+  const pts = profile.points ?? 0;
+  const next = LEVELS[lvl];
+  const prev = LEVELS[lvl - 1];
+  $('p-xp-fill').style.width = (next ? Math.round((pts - prev) / (next - prev) * 100) : 100) + '%';
+  $('p-xp-next').textContent = next ? `${next - pts} pts avant le niveau ${lvl + 1} (${LEVEL_NAMES[lvl]})` : 'Niveau max atteint 🏆';
+  $('demo-toggle').checked = includeDemo;
+  $('my-tops').innerHTML = myTopRows(me.id);
+}
+
+function openUser(userId) {
+  if (!userId || userId === 'undefined') return;
+  if (userId === me.id) return navTo('profile');
+  currentUserId = userId;
+  pushPage('user');
+  renderUser(userId);
+}
+
+async function renderUser(userId) {
+  $('up-handle').textContent = '…';
+  $('up-tops').innerHTML = LOADER;
+  const { data: p } = await sb.from('profiles').select('*').eq('id', userId).maybeSingle();
+  if (currentUserId !== userId) return;
+  if (!p) { $('up-tops').innerHTML = '<div class="empty">Profil introuvable</div>'; return; }
+  const lvl = fillProfileHeader('up-', p);
+  $('up-handle').textContent = p.handle + (p.is_demo ? ' · démo' : '');
+  $('up-level').textContent = `Niv. ${lvl} · ${LEVEL_NAMES[lvl - 1]}`;
+  $('up-tops').innerHTML = myTopRows(userId);
+}
+
+// ─────────────────────────────────────────
+// BOOT
+// ─────────────────────────────────────────
+async function boot() {
+  fillSignupSelects();
+  try {
+    sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  } catch (e) {
+    $('loading-msg').innerHTML = '<div class="msg msg-err">Impossible de charger Supabase. Vérifie ta connexion.</div>';
+    return;
+  }
+  sb.auth.onAuthStateChange(event => { if (event === 'SIGNED_OUT') onSignedOut(); });
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) onAuthSuccess(session.user);
+  else showPage('auth');
+}
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
+
+boot();
+</script>
+</body>
+</html>
