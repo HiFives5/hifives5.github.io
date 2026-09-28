@@ -4,6 +4,8 @@ Fais et partage tes top 5 (films, albums, clubs, destinations…), et compare te
 
 Appli web installable sur téléphone (PWA), avec Supabase comme base de données.
 
+👉 **https://hifives5.github.io/**
+
 ```
 app/                 ← l'appli (publiée sur GitHub Pages)
   index.html         ← tout le code de l'appli
@@ -26,7 +28,7 @@ supabase/
 ### 2. Mise en ligne (GitHub Pages)
 1. Sur GitHub : **Settings → Pages → Build and deployment → Source : GitHub Actions**.
 2. L'appli se publie automatiquement à chaque modification de `app/` sur la branche par défaut (onglet **Actions** pour suivre).
-   Adresse : `https://<ton-pseudo-github>.github.io/<nom-du-depot>/`
+   Adresse : **https://hifives5.github.io/**
 3. Dans Supabase → **Authentication → URL Configuration** : mets cette adresse dans **Site URL** (pour les liens des emails).
 
 > GitHub Pages gratuit nécessite un dépôt **public**. La clé Supabase présente dans le code est la clé « anon », publique par conception : ce sont les règles RLS de `schema.sql` qui protègent les données.
