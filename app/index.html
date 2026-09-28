@@ -448,9 +448,13 @@ textarea.input{resize:none;min-height:80px}
       <div class="p-si"><div class="p-sn" id="p-created">0</div><div class="p-sl">Sujets créés</div></div>
       <div class="p-div"></div>
       <div class="p-si"><div class="p-sn" id="p-pts">0</div><div class="p-sl">Points</div></div>
+      <div class="p-div"></div>
+      <div class="p-si"><div class="p-sn" id="p-likes">0</div><div class="p-sl">♥ reçus</div></div>
     </div>
   </div>
   <div class="scroll">
+    <div id="p-incomplete"></div>
+    <div style="padding:12px 16px 0"><button class="btn btn-ghost" style="height:44px;font-size:14px" onclick="openEditProfile()">✏️ Modifier mon profil</button></div>
     <div class="xp-card">
       <div style="display:flex;justify-content:space-between">
         <span style="font-size:13px;font-weight:700">Progression</span>
@@ -526,6 +530,30 @@ textarea.input{resize:none;min-height:80px}
     <div class="row">
       <button class="btn btn-ghost" style="flex:1" onclick="resetFilters()">Réinitialiser</button>
       <button class="btn btn-primary" style="flex:1" onclick="applyFilters()">Appliquer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════ MODIFIER MON PROFIL (modal) ══════ -->
+<div class="modal-bg" id="edit-modal" onclick="if(event.target===this)closeEditProfile()">
+  <div class="modal-sheet">
+    <div class="mhandle"></div>
+    <div style="font-size:17px;font-weight:900;margin-bottom:14px">Modifier mon profil</div>
+    <div id="ed-msg" class="msg msg-err" style="display:none"></div>
+    <div class="mgroup">Prénom</div>
+    <input id="ed-name" class="input" maxlength="40" style="margin-bottom:14px">
+    <div class="mgroup">Pseudo</div>
+    <input id="ed-handle" class="input" maxlength="21" autocapitalize="off" placeholder="@pseudo" style="margin-bottom:14px">
+    <div class="mgroup">Pays</div>
+    <select id="ed-country" class="input" style="margin-bottom:14px"></select>
+    <div class="row" style="margin-bottom:6px">
+      <div style="flex:1"><div class="mgroup">Naissance</div><select id="ed-year" class="input"></select></div>
+      <div style="flex:1"><div class="mgroup">Genre</div><select id="ed-gender" class="input"></select></div>
+    </div>
+    <p class="hint" style="margin-bottom:16px">Pays, âge et genre servent uniquement aux filtres et aux statistiques anonymes.</p>
+    <div class="row">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeEditProfile()">Annuler</button>
+      <button class="btn btn-primary" style="flex:1" id="ed-save" onclick="saveProfile()">Enregistrer</button>
     </div>
   </div>
 </div>
@@ -754,13 +782,14 @@ window.addEventListener('popstate', () => {
 // ─────────────────────────────────────────
 // AUTH
 // ─────────────────────────────────────────
-function fillSignupSelects() {
-  $('su-country').innerHTML = '<option value="">🌍 Pays…</option>' + COUNTRIES.map(c => `<option>${c}</option>`).join('');
+// Remplit les listes pays / année / genre (inscription et modification du profil)
+function fillProfileSelects(prefix) {
+  $(prefix + 'country').innerHTML = '<option value="">🌍 Pays…</option>' + COUNTRIES.map(c => `<option>${c}</option>`).join('');
   const y = new Date().getFullYear();
   let years = '<option value="">Année de naissance…</option>';
   for (let i = y - 13; i >= 1930; i--) years += `<option>${i}</option>`;
-  $('su-year').innerHTML = years;
-  $('su-gender').innerHTML = '<option value="">Genre…</option>' + GENDERS.map(g => `<option>${g}</option>`).join('');
+  $(prefix + 'year').innerHTML = years;
+  $(prefix + 'gender').innerHTML = '<option value="">Genre…</option>' + GENDERS.map(g => `<option>${g}</option>`).join('');
 }
 
 function switchAuthTab(tab) {
@@ -1124,8 +1153,13 @@ async function renderTopic(id) {
   if (mineAns) {
     const myItems = items.filter(it => it.top_id === mineAns.id).sort((a, b) => a.rank - b.rank);
     myItems.forEach(it => myKeys.add(norm(it.content)));
-    $('tp-mine').innerHTML = `<div class="block"><div class="block-lbl">Mon top 5</div>
+    $('tp-mine').innerHTML = `<div class="block"><div class="block-lbl">Mon top 5 <span class="count-pill" id="tp-mine-likes">♥ …</span></div>
       <ul class="clist" style="padding:0">${myItems.map(it => `<li><div class="rank ${it.rank === 1 ? 'r1' : ''}">${it.rank}</div>${esc(it.content)}</li>`).join('')}</ul></div>`;
+    sb.from('likes').select('user_id').eq('top_id', mineAns.id).then(({ data }) => {
+      const n = (data || []).length;
+      const el = $('tp-mine-likes');
+      if (el) el.textContent = `♥ ${n} j'aime${n > 1 ? 's' : ''}`;
+    });
   }
 
   // Classement agrégé
@@ -1466,7 +1500,15 @@ function fillProfileHeader(prefix, p) {
   return lvl;
 }
 
-function myTopRows(userId) {
+// Nombre de ♥ reçus par chaque top d'un utilisateur : { top_id: n }
+async function fetchLikeCounts(userId) {
+  const { data } = await sb.from('tops').select('id,likes(user_id)').eq('user_id', userId);
+  const m = {};
+  (data || []).forEach(t => { m[t.id] = (t.likes || []).length; });
+  return m;
+}
+
+function myTopRows(userId, likes = {}) {
   const list = answers.filter(a => a.user_id === userId)
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
     .map(a => ({ a, t: topicById(a.topic_id) })).filter(x => x.t);
@@ -1475,12 +1517,20 @@ function myTopRows(userId) {
     <div class="topic-row" onclick="openTopic('${t.id}')">
       <div class="topic-ico">${CAT_ICON[t.category] || '⭐'}</div>
       <div style="flex:1;min-width:0"><div class="topic-ttl">${esc(t.title)}</div><div class="topic-meta">${esc(t.category)} · ${timeAgo(a.created_at)}</div></div>
-      <div style="font-size:16px;color:var(--t3)">›</div>
+      <div style="font-size:12px;font-weight:800;flex-shrink:0;color:${likes[a.id] ? 'var(--orange)' : 'var(--t3)'}">♥ ${likes[a.id] || 0}</div>
     </div>`).join('');
 }
 
+const sumLikes = likes => Object.values(likes).reduce((s, n) => s + n, 0);
+
 async function renderProfile() {
-  await refreshProfile();
+  const [, likes] = await Promise.all([refreshProfile(), fetchLikeCounts(me.id)]);
+  $('p-likes').textContent = sumLikes(likes);
+  const missing = [!profile.country && 'pays', !profile.birth_year && 'année de naissance', !profile.gender && 'genre'].filter(Boolean);
+  $('p-incomplete').innerHTML = missing.length
+    ? `<div class="insight" style="margin:12px 16px 0;padding:14px 16px;cursor:pointer" onclick="openEditProfile()">
+        <div class="ins-text">👋 <strong style="color:var(--text)">Complète ton profil</strong> (${missing.join(', ')}) pour apparaître dans les filtres et les stats par pays, âge et genre. →</div></div>`
+    : '';
   const lvl = fillProfileHeader('p-', profile);
   $('p-handle').textContent = profile.handle;
   $('p-level-badge').textContent = `Niv. ${lvl} · ${LEVEL_NAMES[lvl - 1]}`;
@@ -1491,7 +1541,42 @@ async function renderProfile() {
   $('p-xp-fill').style.width = (next ? Math.round((pts - prev) / (next - prev) * 100) : 100) + '%';
   $('p-xp-next').textContent = next ? `${next - pts} pts avant le niveau ${lvl + 1} (${LEVEL_NAMES[lvl]})` : 'Niveau max atteint 🏆';
   $('demo-toggle').checked = includeDemo;
-  $('my-tops').innerHTML = myTopRows(me.id);
+  $('my-tops').innerHTML = myTopRows(me.id, likes);
+}
+
+function openEditProfile() {
+  $('ed-name').value = profile.name || '';
+  $('ed-handle').value = profile.handle || '';
+  $('ed-country').value = profile.country || '';
+  $('ed-year').value = profile.birth_year || '';
+  $('ed-gender').value = profile.gender || '';
+  $('ed-msg').style.display = 'none';
+  $('edit-modal').classList.add('open');
+}
+function closeEditProfile() { $('edit-modal').classList.remove('open'); }
+
+async function saveProfile() {
+  const err = m => { $('ed-msg').textContent = m; $('ed-msg').style.display = ''; };
+  const name = $('ed-name').value.trim();
+  const handle = $('ed-handle').value.trim().replace(/^@/, '');
+  if (!name) return err('Le prénom est obligatoire');
+  if (!/^[A-Za-z0-9_.]{2,20}$/.test(handle)) return err('Pseudo : 2 à 20 caractères, lettres, chiffres, _ ou .');
+  const btn = $('ed-save');
+  btn.disabled = true;
+  const { error } = await sb.from('profiles').update({
+    name,
+    handle: '@' + handle,
+    country: $('ed-country').value || null,
+    birth_year: $('ed-year').value ? parseInt($('ed-year').value, 10) : null,
+    gender: $('ed-gender').value || null,
+  }).eq('id', me.id);
+  btn.disabled = false;
+  if (error) return err(error.code === '23505' ? 'Ce pseudo est déjà pris' : 'Erreur : ' + error.message);
+  closeEditProfile();
+  toast('Profil enregistré ✓');
+  await loadData();          // tes réponses sont maintenant rattachées à ton pays / âge / genre
+  $('home-av').textContent = initialOf(profile);
+  renderProfile();
 }
 
 function openUser(userId) {
@@ -1511,14 +1596,17 @@ async function renderUser(userId) {
   const lvl = fillProfileHeader('up-', p);
   $('up-handle').textContent = p.handle + (p.is_demo ? ' · démo' : '');
   $('up-level').textContent = `Niv. ${lvl} · ${LEVEL_NAMES[lvl - 1]}`;
-  $('up-tops').innerHTML = myTopRows(userId);
+  const likes = await fetchLikeCounts(userId);
+  if (currentUserId !== userId) return;
+  $('up-tops').innerHTML = myTopRows(userId, likes);
 }
 
 // ─────────────────────────────────────────
 // BOOT
 // ─────────────────────────────────────────
 async function boot() {
-  fillSignupSelects();
+  fillProfileSelects('su-');
+  fillProfileSelects('ed-');
   try {
     sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   } catch (e) {
