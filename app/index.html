@@ -488,6 +488,21 @@ textarea.input{resize:none;min-height:80px}
   </div>
 </div>
 
+<!-- ══════ LA RÉPONSE D'UNE PERSONNE À UN SUJET ══════ -->
+<div id="page-answer" class="page">
+  <div class="sub-hdr">
+    <div class="back-btn" onclick="goBack()">←</div>
+    <div style="flex:1;min-width:0">
+      <div class="hdr-kicker" id="an-cat"></div>
+      <div class="hdr-title" id="an-title"></div>
+    </div>
+  </div>
+  <div class="scroll" style="padding-bottom:110px">
+    <div id="an-body"></div>
+  </div>
+  <div class="bottom-bar"><button class="btn btn-primary" id="an-btn"></button></div>
+</div>
+
 <!-- ══════ PROFIL D'UN AUTRE UTILISATEUR ══════ -->
 <div id="page-user" class="page no-nav">
   <div class="sub-hdr">
@@ -614,6 +629,7 @@ let includeDemo = readPref('includeDemo', true);
 let stack = [];         // pile de navigation
 let currentTopicId = null;
 let currentUserId = null;
+let currentAnswerId = null;
 let homeTab = 'foryou';
 let searchCat = 'Tous';
 let searchSort = 'popular';
@@ -773,6 +789,7 @@ const RENDERERS = {
   profile: () => renderProfile(),
   topic: () => renderTopic(currentTopicId),
   user: () => renderUser(currentUserId),
+  answer: () => renderAnswer(currentAnswerId),
 };
 
 function showPage(name) {
@@ -1214,6 +1231,67 @@ async function renderTopic(id) {
 }
 
 // ─────────────────────────────────────────
+// LA RÉPONSE D'UNE PERSONNE (son top 5 vs le mien)
+// ─────────────────────────────────────────
+function openAnswer(topId) {
+  currentAnswerId = topId;
+  pushPage('answer');
+  renderAnswer(topId);
+}
+
+async function renderAnswer(topId) {
+  $('an-body').innerHTML = LOADER;
+  const { data: t } = await sb.from('tops')
+    .select('id,topic_id,user_id,created_at,profiles!tops_user_id_fkey(id,name,handle,is_demo),likes(user_id),top_items(rank,content)')
+    .eq('id', topId).maybeSingle();
+  if (currentAnswerId !== topId) return;
+  if (!t) { $('an-body').innerHTML = '<div class="empty">Réponse introuvable</div>'; return; }
+  const topic = topicById(t.topic_id) || { title: '?', category: '' };
+  const p = t.profiles || {};
+  $('an-cat').textContent = (CAT_ICON[topic.category] || '') + ' ' + topic.category;
+  $('an-title').textContent = topic.title;
+
+  // Mon top sur le même sujet, pour comparer
+  const mine = myAnswer(t.topic_id);
+  let myItems = [];
+  if (mine) {
+    const { data } = await sb.from('top_items').select('rank,content').eq('top_id', mine.id).order('rank');
+    if (currentAnswerId !== topId) return;
+    myItems = data || [];
+  }
+  const myKeys = new Set(myItems.map(it => norm(it.content)));
+  const theirs = [...(t.top_items || [])].sort((a, b) => a.rank - b.rank);
+  const theirKeys = new Set(theirs.map(it => norm(it.content)));
+  const common = theirs.filter(it => myKeys.has(norm(it.content))).length;
+  const likes = t.likes || [];
+  const liked = likes.some(l => l.user_id === me.id);
+  const list = (items, hlKeys) => `<ul class="clist" style="padding:0">${items.map(it => {
+    const hl = hlKeys.has(norm(it.content));
+    return `<li><div class="rank ${it.rank === 1 ? 'r1' : ''}">${it.rank}</div><span style="flex:1;${hl ? 'color:var(--orange)' : ''}">${esc(it.content)}</span>${hl ? '<span class="st-tag" style="color:var(--orange);background:var(--og)">en commun</span>' : ''}</li>`;
+  }).join('')}</ul>`;
+
+  $('an-body').innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;padding:14px 20px 4px">
+      <div class="cav" style="background:${colorFor(p.handle)}" onclick="openUser('${p.id}')">${initialOf(p)}</div>
+      <div style="flex:1">
+        <div style="font-size:14px;font-weight:800;color:var(--orange);cursor:pointer" onclick="openUser('${p.id}')">${esc(p.handle)}${p.is_demo ? ' <span style="color:var(--t3);font-weight:600">· démo</span>' : ''}</div>
+        <div style="font-size:11px;color:var(--t3)">${timeAgo(t.created_at)}</div>
+      </div>
+      ${t.user_id === me.id ? '' : `<button class="act ${liked ? 'liked' : ''}" data-n="${likes.length}" data-h="${esc(p.handle)}" onclick="toggleLike('${t.id}',this)">✋ ${likes.length}</button>`}
+    </div>
+    <div class="block">
+      <div class="block-lbl">Son top 5 ${mine ? `<span class="count-pill" style="${common ? 'color:var(--orange);background:var(--og)' : ''}">${common} en commun avec toi</span>` : ''}</div>
+      ${list(theirs, myKeys)}
+    </div>
+    ${mine ? `<div class="block"><div class="block-lbl">Mon top 5</div>${list(myItems, theirKeys)}</div>`
+           : `<div class="insight" style="margin:12px 16px"><div class="ins-text">🔒 Tu n'as pas encore rempli ce sujet. Fais ton top pour voir ce que vous avez en commun et débloquer le classement.</div></div>`}`;
+
+  const btn = $('an-btn');
+  btn.textContent = mine ? 'Voir le classement du sujet' : 'Faire le mien →';
+  btn.onclick = () => mine ? openTopic(t.topic_id) : openFillById(t.topic_id);
+}
+
+// ─────────────────────────────────────────
 // REMPLIR UN TOP (avec autocomplétion)
 // ─────────────────────────────────────────
 let fillTopic = null;
@@ -1534,8 +1612,9 @@ function myTopRows(userId, likes = {}) {
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
     .map(a => ({ a, t: topicById(a.topic_id) })).filter(x => x.t);
   if (!list.length) return '<div class="empty"><div class="empty-ico">✋</div>Aucun top pour l\'instant</div>';
+  // Mes tops → page du sujet ; ceux d'un autre → sa réponse
   return list.map(({ a, t }) => `
-    <div class="topic-row" onclick="openTopic('${t.id}')">
+    <div class="topic-row" onclick="${userId === me.id ? `openTopic('${t.id}')` : `openAnswer('${a.id}')`}">
       <div class="topic-ico">${CAT_ICON[t.category] || '⭐'}</div>
       <div style="flex:1;min-width:0"><div class="topic-ttl">${esc(t.title)}</div><div class="topic-meta">${esc(t.category)} · ${timeAgo(a.created_at)}</div></div>
       <div style="font-size:12px;font-weight:800;flex-shrink:0;color:${likes[a.id] ? 'var(--orange)' : 'var(--t3)'}">✋ ${likes[a.id] || 0}</div>
