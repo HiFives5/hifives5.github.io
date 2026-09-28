@@ -395,6 +395,7 @@ textarea.input{resize:none;min-height:80px}
     </div>
   </div>
   <div class="scroll" style="padding:20px 20px 260px">
+    <div id="fill-teaser"></div>
     <p style="font-size:13px;color:var(--t3);margin-bottom:16px;font-weight:600">Ton classement, du #1 au #5 (3 minimum). Tape pour voir les suggestions.</p>
     <div id="fill-rows"></div>
     <p class="hint">Tes réponses alimentent les statistiques anonymes de la communauté.</p>
@@ -1081,6 +1082,8 @@ function setIncludeDemo(v) {
 // DÉTAIL D'UN SUJET
 // ─────────────────────────────────────────
 function openTopic(id) {
+  // Pas encore répondu → on remplit d'abord (pas d'influence, et les stats restent la récompense)
+  if (!myAnswer(id)) return openFillById(id);
   currentTopicId = id;
   pushPage('topic');
   renderTopic(id);
@@ -1171,6 +1174,11 @@ async function openFill(topic, replace) {
   $('fill-title').textContent = topic.title;
   $('fill-btn').textContent = fillExisting ? 'Enregistrer ✋' : 'Publier mon top ✋';
   $('fill-btn').disabled = false;
+  const others = answers.filter(a => a.topic_id === topic.id && a.user_id !== me.id && matchesFilters(a.profiles)).length;
+  $('fill-teaser').innerHTML = fillExisting ? '' : `<div class="insight" style="margin:0 0 18px;padding:14px 16px">
+    <div class="ins-text">${others
+      ? `🔒 <strong style="color:var(--text)">${others} personne${others > 1 ? 's ont' : ' a'} déjà répondu.</strong> Découvre leur classement et compare-toi après avoir publié.`
+      : `✨ <strong style="color:var(--text)">Personne n'a encore répondu.</strong> Ton top sera la référence !`}</div></div>`;
   $('fill-rows').innerHTML = LOADER;
   replace ? replacePage('fill') : pushPage('fill');
 
