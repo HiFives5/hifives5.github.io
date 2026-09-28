@@ -648,7 +648,7 @@ async function fetchAll(build) {
 async function loadData() {
   const [t, a] = await Promise.all([
     fetchAll(() => sb.from('topics').select('id,title,category,created_by,is_official,created_at').order('created_at').order('id')),
-    fetchAll(() => sb.from('tops').select('id,topic_id,user_id,created_at,profiles(country,birth_year,gender,is_demo)').order('created_at').order('id')),
+    fetchAll(() => sb.from('tops').select('id,topic_id,user_id,created_at,profiles!tops_user_id_fkey(country,birth_year,gender,is_demo)').order('created_at').order('id')),
   ]);
   topics = t;
   answers = a;
@@ -922,7 +922,7 @@ async function renderActivity() {
   const box = $('home-activity');
   box.innerHTML = LOADER;
   const { data, error } = await sb.from('tops')
-    .select('id,topic_id,user_id,created_at,profiles(id,name,handle,country,birth_year,gender,is_demo),likes(user_id),top_items(rank,content)')
+    .select('id,topic_id,user_id,created_at,profiles!tops_user_id_fkey(id,name,handle,country,birth_year,gender,is_demo),likes(user_id),top_items(rank,content)')
     .neq('user_id', me.id)
     .order('created_at', { ascending: false })
     .limit(60);
@@ -1107,7 +1107,7 @@ async function renderTopic(id) {
   try {
     [items, { data: recent }] = await Promise.all([
       fetchTopicItems(id),
-      sb.from('tops').select('id,topic_id,user_id,created_at,profiles(id,name,handle,country,birth_year,gender,is_demo),likes(user_id)')
+      sb.from('tops').select('id,topic_id,user_id,created_at,profiles!tops_user_id_fkey(id,name,handle,country,birth_year,gender,is_demo),likes(user_id)')
         .eq('topic_id', id).neq('user_id', me.id).order('created_at', { ascending: false }).limit(40),
     ]);
   } catch (e) {
