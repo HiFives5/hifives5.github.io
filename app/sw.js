@@ -1,8 +1,8 @@
 // Service worker minimal : rend l'appli installable et affiche
 // la dernière version connue si le réseau est coupé.
 // Les appels à Supabase ne sont jamais mis en cache.
-const CACHE = 'hifives-v1';
-const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
+const CACHE = 'hifives-v2';
+const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
