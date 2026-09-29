@@ -62,6 +62,19 @@ button{font-family:var(--font)}
 .hi5-txt .who{color:var(--orange);font-weight:800;cursor:pointer}
 .hi5-txt .what{color:var(--t2)}
 .hi5-from{font-size:12px;color:var(--t2);margin:-4px 0 10px;line-height:1.5}
+.p-si.link{cursor:pointer;border-radius:10px;transition:background .15s}
+.p-si.link:active{background:var(--bg3)}
+.p-si.link .p-sl::after{content:' ›';opacity:.6}
+.big-counter{margin:16px;padding:22px 18px;border-radius:var(--r);background:linear-gradient(145deg,#2A1410,#16110F);border:1px solid rgba(255,92,46,.25);text-align:center}
+.big-counter b{display:block;font-size:52px;font-weight:900;letter-spacing:-2px;color:var(--orange);line-height:1}
+.pts-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--border);font-size:14px}
+.pts-row:first-child{border-top:none}
+.pts-row .n{margin-left:auto;font-weight:900}
+.lvl-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--border);font-size:13px;font-weight:700}
+.lvl-row:first-child{border-top:none}
+.lvl-row.off{color:var(--t3)}
+.lvl-row.cur{color:var(--orange)}
+.ev-pts{font-weight:900;color:var(--green);flex-shrink:0;font-size:13px}
 .hi5-from .who{color:var(--orange);font-weight:700;cursor:pointer}
 .nav-btn.active .nav-ico{opacity:1}
 .nav-btn.active .nav-lbl{color:var(--orange)}
@@ -495,13 +508,13 @@ textarea.input{resize:none;min-height:80px}
       </div>
     </div>
     <div class="p-stats">
-      <div class="p-si"><div class="p-sn" id="p-filled">0</div><div class="p-sl">Remplis</div></div>
+      <div class="p-si link" onclick="openStat('filled')"><div class="p-sn" id="p-filled">0</div><div class="p-sl">Remplis</div></div>
       <div class="p-div"></div>
-      <div class="p-si"><div class="p-sn" id="p-created">0</div><div class="p-sl">Sujets créés</div></div>
+      <div class="p-si link" onclick="openStat('created')"><div class="p-sn" id="p-created">0</div><div class="p-sl">Sujets créés</div></div>
       <div class="p-div"></div>
-      <div class="p-si"><div class="p-sn" id="p-pts">0</div><div class="p-sl">Points</div></div>
+      <div class="p-si link" onclick="openStat('points')"><div class="p-sn" id="p-pts">0</div><div class="p-sl">Points</div></div>
       <div class="p-div"></div>
-      <div class="p-si" style="cursor:pointer" onclick="document.getElementById('p-hi5').scrollIntoView({behavior:'smooth'})"><div class="p-sn" id="p-likes">0</div><div class="p-sl">✋ High fives</div></div>
+      <div class="p-si link" onclick="openStat('hi5')"><div class="p-sn" id="p-likes">0</div><div class="p-sl">✋ High fives</div></div>
     </div>
   </div>
   <div class="scroll">
@@ -546,6 +559,19 @@ textarea.input{resize:none;min-height:80px}
     <div id="an-body"></div>
   </div>
   <div class="bottom-bar"><button class="btn btn-primary" id="an-btn"></button></div>
+</div>
+
+<!-- ══════ MES STATISTIQUES (remplis / créés / high fives / points) ══════ -->
+<div id="page-stat" class="page">
+  <div class="sub-hdr">
+    <div class="back-btn" onclick="goBack()">←</div>
+    <div>
+      <div class="hdr-kicker" style="color:var(--t3)">Mon profil</div>
+      <div class="hdr-title" id="st-title"></div>
+    </div>
+  </div>
+  <div class="feed-tabs" id="st-tabs" style="padding-top:12px;display:none"></div>
+  <div class="scroll" id="st-body" style="padding-bottom:24px"></div>
 </div>
 
 <!-- ══════ PROFIL D'UN AUTRE UTILISATEUR ══════ -->
@@ -719,6 +745,8 @@ let stack = [];         // pile de navigation
 let currentTopicId = null;
 let currentUserId = null;
 let currentAnswerId = null;
+let currentStat = 'filled';
+let hi5Tab = 'recus';
 let homeTab = 'foryou';
 let searchCat = 'Tous';
 let searchSort = 'popular';
@@ -941,6 +969,7 @@ const RENDERERS = {
   user: () => renderUser(currentUserId),
   answer: () => renderAnswer(currentAnswerId),
   admin: () => renderAdmin(),
+  stat: () => renderStat(currentStat),
 };
 
 function showPage(name) {
@@ -1582,17 +1611,156 @@ async function renderHi5Received() {
     box.innerHTML = '<div class="slbl">✋ High fives reçus</div><div class="hint" style="padding:0 20px 4px">Pas encore de high five. Partage tes tops pour en recevoir !</div>';
     return;
   }
-  box.innerHTML = '<div class="slbl">✋ High fives reçus</div>' + list.slice(0, 15).map(l => {
-    const p = l.profiles || {};
-    const t = topicById(l.tops?.topic_id);
-    return `<div class="hi5-row ${seen && l.created_at > seen ? 'new' : ''}" style="cursor:pointer" onclick="openTopic('${l.tops?.topic_id}')">
-      <div class="cav" style="background:${colorFor(p.handle)}" onclick="event.stopPropagation();openUser('${p.id}')">${initialOf(p)}</div>
-      <div class="hi5-txt"><span class="who" onclick="event.stopPropagation();openUser('${p.id}')">${esc(p.handle || '?')}</span>
-        <span class="what"> t'a fait un high five sur</span> <strong>${esc(t ? t.title.replace(/^Top 5 /, 'ton top 5 ') : 'ton top 5')}</strong>
-        <div class="topic-meta">${timeAgo(l.created_at)}</div></div>
-      <div style="font-size:20px">✋</div>
-    </div>`;
+  box.innerHTML = `<div class="slbl">✋ High fives reçus ${list.length > 3 ? `<a onclick="openStat('hi5')">Voir tout (${list.length}${list.length >= 30 ? '+' : ''}) →</a>` : ''}</div>`
+    + list.slice(0, 3).map(l => hi5Row(l, 'recus', seen)).join('');
+}
+
+// Une ligne de high five : reçu (qui me l'a fait) ou donné (à qui je l'ai fait)
+function hi5Row(l, kind, seen) {
+  const p = (kind === 'recus' ? l.profiles : l.tops?.profiles) || {};
+  const t = topicById(l.tops?.topic_id);
+  const title = t ? t.title.replace(/^Top 5 /, kind === 'recus' ? 'ton top 5 ' : 'son top 5 ') : 'un top 5';
+  const who = `<span class="who" onclick="event.stopPropagation();openUser('${p.id}')">${esc(p.handle || '?')}</span>`;
+  return `<div class="hi5-row ${seen && l.created_at > seen ? 'new' : ''}" style="cursor:pointer" onclick="${kind === 'recus' ? `openTopic('${l.tops?.topic_id}')` : `openAnswer('${l.top_id}')`}">
+    <div class="cav" style="background:${colorFor(p.handle)}" onclick="event.stopPropagation();openUser('${p.id}')">${initialOf(p)}</div>
+    <div class="hi5-txt">${kind === 'recus' ? `${who}<span class="what"> t'a fait un high five sur</span>` : `<span class="what">Tu as fait un high five à</span> ${who} <span class="what">sur</span>`}
+      <strong>${esc(title)}</strong>
+      <div class="topic-meta">${timeAgo(l.created_at)} · ${fmtDate(l.created_at)}</div></div>
+    <div style="font-size:20px">✋</div>
+  </div>`;
+}
+
+// ─────────────────────────────────────────
+// MES STATISTIQUES : pages ouvertes depuis les compteurs du profil
+// ─────────────────────────────────────────
+const fmtDate = d => new Date(d).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+const monthOf = d => { const m = new Date(d).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }); return m.charAt(0).toUpperCase() + m.slice(1); };
+// Liste chronologique avec un intertitre par mois
+function byMonth(list, dateOf, rowFn) {
+  let cur = '';
+  return list.map(x => {
+    const m = monthOf(dateOf(x));
+    const head = m !== cur ? `<div class="slbl">${m}</div>` : '';
+    cur = m;
+    return head + rowFn(x);
   }).join('');
+}
+const emptyBox = (ico, txt) => `<div class="empty"><div class="empty-ico">${ico}</div>${txt}</div>`;
+
+function openStat(kind) {
+  currentStat = kind;
+  pushPage('stat');
+  renderStat(kind);
+}
+
+async function renderStat(kind) {
+  const titles = { filled: '✋ Mes tops remplis', created: '✏️ Mes sujets créés', hi5: '✋ High fives', points: '⭐ Mes points' };
+  $('st-title').textContent = titles[kind];
+  $('st-tabs').style.display = kind === 'hi5' ? 'flex' : 'none';
+  const body = $('st-body');
+  body.innerHTML = LOADER;
+  const counts = countByTopic();
+  const myAnswers = answers.filter(a => a.user_id === me.id).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  const myTopics = topics.filter(t => t.created_by === me.id).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+  if (kind === 'filled') {
+    // Aperçu de mon top 3 pour chaque sujet
+    const { data } = await sb.from('top_items').select(`top_id,${ITEM_COLS()},tops!inner(user_id)`).eq('tops.user_id', me.id);
+    if (currentStat !== kind) return;
+    const byTop = {};
+    (data || []).forEach(it => (byTop[it.top_id] = byTop[it.top_id] || []).push(it));
+    body.innerHTML = myAnswers.length
+      ? `<div class="hint" style="padding:0 20px">${myAnswers.length} top${myAnswers.length > 1 ? 's' : ''} rempli${myAnswers.length > 1 ? 's' : ''}, du plus récent au plus ancien.</div>`
+        + byMonth(myAnswers, a => a.created_at, a => {
+          const t = topicById(a.topic_id);
+          if (!t) return '';
+          const top3 = (byTop[a.id] || []).sort((x, y) => x.rank - y.rank).slice(0, 3).map(it => `${it.rank}. ${esc(itemLabel(it))}`).join(' · ');
+          return `<div class="topic-row" onclick="openTopic('${t.id}')">
+            <div class="topic-ico">${CAT_ICON[t.category] || '⭐'}</div>
+            <div style="flex:1;min-width:0"><div class="topic-ttl">${esc(t.title)}</div>
+              <div class="topic-meta">${fmtDate(a.created_at)} · ${esc(t.category)}</div>
+              ${top3 ? `<div class="topic-why" style="color:var(--t2)">${top3}</div>` : ''}</div>
+            <div style="font-size:16px;color:var(--t3)">›</div></div>`;
+        })
+      : emptyBox('✋', 'Aucun top rempli pour l\'instant.');
+    return;
+  }
+
+  if (kind === 'created') {
+    body.innerHTML = myTopics.length
+      ? `<div class="hint" style="padding:0 20px">${myTopics.length} sujet${myTopics.length > 1 ? 's' : ''} proposé${myTopics.length > 1 ? 's' : ''} à la communauté (+20 points chacun).</div>`
+        + byMonth(myTopics, t => t.created_at, t => {
+          const n = counts[t.id] || 0;
+          return `<div class="topic-row" onclick="openTopic('${t.id}')">
+            <div class="topic-ico">${CAT_ICON[t.category] || '⭐'}</div>
+            <div style="flex:1;min-width:0"><div class="topic-ttl">${esc(t.title)}</div>
+              <div class="topic-meta">Créé le ${fmtDate(t.created_at)} · ${n} réponse${n > 1 ? 's' : ''}</div></div>
+            <div style="font-size:16px;color:var(--t3)">›</div></div>`;
+        })
+      : emptyBox('✏️', 'Tu n\'as pas encore créé de sujet.<br><br><button class="btn btn-primary" style="width:auto;padding:0 20px;height:44px" onclick="startCreate()">Créer un sujet +</button>');
+    return;
+  }
+
+  if (kind === 'hi5') {
+    const [recus, donnes] = await Promise.all([
+      fetchHi5Received(200).catch(() => []),
+      sb.from('likes').select('created_at,top_id,tops!inner(topic_id,user_id,profiles!tops_user_id_fkey(id,handle))')
+        .eq('user_id', me.id).order('created_at', { ascending: false }).limit(200).then(r => r.data || []),
+    ]);
+    if (currentStat !== kind) return;
+    $('st-tabs').innerHTML = [['recus', `Reçus (${recus.length})`], ['donnes', `Donnés (${donnes.length})`]].map(([k, l]) =>
+      `<button class="ftab ${hi5Tab === k ? 'active' : ''}" onclick="hi5Tab='${k}';renderStat('hi5')">${l}</button>`).join('');
+    const list = hi5Tab === 'recus' ? recus : donnes;
+    body.innerHTML = list.length
+      ? byMonth(list, l => l.created_at, l => hi5Row(l, hi5Tab))
+      : emptyBox('✋', hi5Tab === 'recus' ? 'Pas encore de high five reçu.' : 'Tu n\'as encore fait aucun high five.<br>Va dans l\'onglet Activité pour en distribuer !');
+    return;
+  }
+
+  if (kind === 'points') {
+    await refreshProfile();
+    if (currentStat !== kind) return;
+    const pts = profile.points ?? 0;
+    const lvl = levelOf(pts);
+    const next = LEVELS[lvl];
+    const prev = LEVELS[lvl - 1];
+    const filled = profile.tops_filled ?? 0;
+    const created = profile.tops_created ?? 0;
+    const other = pts - filled * 50 - created * 20;
+    // Historique : un événement par top rempli (+50) et par sujet créé (+20)
+    const events = [
+      ...myAnswers.map(a => ({ at: a.created_at, pts: 50, ico: '✋', txt: 'Top rempli', t: topicById(a.topic_id) })),
+      ...myTopics.map(t => ({ at: t.created_at, pts: 20, ico: '✏️', txt: 'Sujet créé', t })),
+    ].sort((a, b) => new Date(b.at) - new Date(a.at));
+    body.innerHTML = `
+      <div class="big-counter">
+        <b>${pts}</b>
+        <div style="font-size:12px;color:var(--t3);font-weight:700;margin-top:6px;text-transform:uppercase;letter-spacing:.8px">points</div>
+        <div style="margin-top:14px;font-size:14px;font-weight:800">Niv. ${lvl} · ${LEVEL_NAMES[lvl - 1]}</div>
+        <div class="xp-bar-bg" style="margin:10px 0 6px"><div class="xp-bar-fill" style="width:${next ? Math.round((pts - prev) / (next - prev) * 100) : 100}%"></div></div>
+        <div style="font-size:11px;color:var(--t3)">${next ? `${next - pts} pts avant le niveau ${lvl + 1} (${LEVEL_NAMES[lvl]})` : 'Niveau max atteint 🏆'}</div>
+      </div>
+      <div class="slbl">Détail par type</div>
+      <div class="card" style="margin:0 16px;padding:4px 16px">
+        <div class="pts-row"><span>✋</span><span>Tops remplis <span style="color:var(--t3)">· ${filled} × 50</span></span><span class="n">${filled * 50}</span></div>
+        <div class="pts-row"><span>✏️</span><span>Sujets créés <span style="color:var(--t3)">· ${created} × 20</span></span><span class="n">${created * 20}</span></div>
+        ${other ? `<div class="pts-row"><span>🎁</span><span>Autres</span><span class="n">${other}</span></div>` : ''}
+        <div class="pts-row" style="color:var(--orange)"><span>⭐</span><strong>Total</strong><span class="n">${pts}</span></div>
+      </div>
+      <div class="slbl">Niveaux</div>
+      <div class="card" style="margin:0 16px;padding:4px 16px">
+        ${LEVELS.map((min, i) => `<div class="lvl-row ${i + 1 === lvl ? 'cur' : pts >= min ? '' : 'off'}">
+          <span>${pts >= min ? '✅' : '🔒'}</span><span>Niv. ${i + 1} · ${LEVEL_NAMES[i]}</span><span style="margin-left:auto">${min} pts</span></div>`).join('')}
+      </div>
+      <div class="slbl">Historique</div>
+      ${events.length ? byMonth(events, e => e.at, e => `
+        <div class="hi5-row" ${e.t ? `style="cursor:pointer" onclick="openTopic('${e.t.id}')"` : ''}>
+          <div style="font-size:20px">${e.ico}</div>
+          <div class="hi5-txt"><strong>${e.txt}</strong> <span class="what">· ${esc(e.t ? e.t.title : '')}</span>
+            <div class="topic-meta">${fmtDate(e.at)}</div></div>
+          <div class="ev-pts">+${e.pts}</div>
+        </div>`) : emptyBox('⭐', 'Remplis ton premier top pour gagner 50 points !')}`;
+  }
 }
 
 // ─────────────────────────────────────────
