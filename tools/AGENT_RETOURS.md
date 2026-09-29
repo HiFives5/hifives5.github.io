@@ -30,7 +30,10 @@ Pour chaque point validé :
 1. Implémenter la modification dans `app/index.html` (et une migration `supabase/migrations/NNN_*.sql` si la base
    change — jamais `schema.sql`, qui efface tout). Garder le style du code existant.
 2. Tester (au minimum : syntaxe JS ; idéalement le parcours concerné dans un navigateur headless).
-3. Commit clair en français, puis `git push` sur la branche par défaut (la publication GitHub Pages est automatique).
+3. Commit clair en français, puis `git push` sur **la branche de travail de la session** (`claude/serene-thompson-…`,
+   celle que l'environnement autorise). Le workflow « Intégrer les modifications validées de l'agent » la fusionne
+   automatiquement dans la branche par défaut et republie l'appli (1 à 2 min). En cas de conflit de fusion, le workflow
+   échoue : le signaler à Lionel.
 4. Mettre à jour les retours concernés :
    `python3 tools/retours.py update <id> traite "réponse validée"`
    (`en_cours` si le travail continue, `rejete` pour les points classés).

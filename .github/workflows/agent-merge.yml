@@ -1,0 +1,38 @@
+name: Intégrer les modifications validées de l'agent
+
+# La routine « Retours HiFives » ne peut publier que sur sa propre branche
+# (claude/serene-thompson-…), et ne le fait qu'après la validation de Lionel.
+# Ce workflow intègre cette branche à la branche par défaut, puis relance
+# la publication GitHub Pages.
+
+on:
+  push:
+    branches: ['claude/serene-thompson**']
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: agent-merge
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+      - name: Fusionner la branche de l'agent
+        run: |
+          git config user.name "hifives-agent"
+          git config user.email "hifives-agent@users.noreply.github.com"
+          git fetch origin "$GITHUB_REF_NAME"
+          git merge --no-edit "origin/$GITHUB_REF_NAME"
+          git push origin "HEAD:${{ github.event.repository.default_branch }}"
+      - name: Relancer la publication de l'appli
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --ref "${{ github.event.repository.default_branch }}" --repo "$GITHUB_REPOSITORY"
