@@ -773,7 +773,28 @@ async function loadData() {
   ]);
   topics = t;
   answers = a;
+  lastLoad = Date.now();
 }
+
+// Les données sont chargées à l'ouverture ; on les rafraîchit si elles ont plus d'une minute
+// (la session reste ouverte des jours : sinon on ne voit pas les nouveaux sujets des autres)
+let lastLoad = 0;
+async function refreshIfStale(maxAgeMs = 60000) {
+  if (!me || Date.now() - lastLoad < maxAgeMs) return false;
+  try { await loadData(); return true; } catch (e) { return false; }
+}
+
+// Un sujet inconnu (créé par quelqu'un depuis l'ouverture de l'appli) : on recharge
+async function ensureTopic(id) {
+  if (!topicById(id)) { try { await loadData(); } catch (e) {} }
+  return topicById(id);
+}
+
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState !== 'visible') return;
+  const cur = stack[stack.length - 1];
+  if (await refreshIfStale() && ['home', 'search', 'profile'].includes(cur) && stack[stack.length - 1] === cur) RENDERERS[cur]();
+});
 
 async function refreshProfile() {
   const { data } = await sb.from('profiles').select('*').eq('id', me.id).maybeSingle();
@@ -870,6 +891,8 @@ function navTo(tab) {
   stack = [tab];
   showPage(tab);
   RENDERERS[tab] && RENDERERS[tab]();
+  // Rafraîchit en arrière-plan si besoin, puis réaffiche l'onglet s'il est toujours ouvert
+  refreshIfStale().then(fresh => { if (fresh && stack.length === 1 && stack[0] === tab && RENDERERS[tab]) RENDERERS[tab](); });
 }
 
 function pushPage(name) {
@@ -1071,6 +1094,7 @@ async function renderActivity() {
     .order('created_at', { ascending: false })
     .limit(60);
   if (error) { box.innerHTML = '<div class="empty"><div class="empty-ico">😕</div>Erreur de chargement</div>'; return; }
+  if (data.some(t => !topicById(t.topic_id))) { try { await loadData(); } catch (e) {} }
   const rows = data.filter(t => matchesFilters(t.profiles)).slice(0, 25);
   box.innerHTML = rows.length
     ? rows.map(t => topCard(t, true)).join('')
@@ -1226,7 +1250,8 @@ function setIncludeDemo(v) {
 // ─────────────────────────────────────────
 // DÉTAIL D'UN SUJET
 // ─────────────────────────────────────────
-function openTopic(id) {
+async function openTopic(id) {
+  if (!await ensureTopic(id)) return toast('Sujet introuvable');
   // Pas encore répondu → on remplit d'abord (pas d'influence, et les stats restent la récompense)
   if (!myAnswer(id)) return openFillById(id);
   currentTopicId = id;
@@ -1449,7 +1474,7 @@ async function renderAnswer(topId) {
     .eq('id', topId).maybeSingle();
   if (currentAnswerId !== topId) return;
   if (!t) { $('an-body').innerHTML = '<div class="empty">Réponse introuvable</div>'; return; }
-  const topic = topicById(t.topic_id) || { title: '?', category: '' };
+  const topic = (await ensureTopic(t.topic_id)) || { title: '?', category: '' };
   const p = t.profiles || {};
   $('an-cat').textContent = (CAT_ICON[topic.category] || '') + ' ' + topic.category;
   $('an-title').textContent = topic.title;
@@ -1502,9 +1527,9 @@ let fillExisting = null;   // ma réponse existante (modification)
 let fillItems = ['', '', '', '', ''];
 let fillPool = [];
 
-function openFillById(id) {
-  const t = topicById(id);
-  if (t) openFill(t);
+async function openFillById(id) {
+  const t = await ensureTopic(id);
+  if (t) openFill(t); else toast('Sujet introuvable');
 }
 
 async function openFill(topic, replace) {
