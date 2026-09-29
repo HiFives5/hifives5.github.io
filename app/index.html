@@ -112,6 +112,8 @@ textarea.input{resize:none;min-height:80px}
 .topic-ico{width:40px;height:40px;border-radius:12px;background:var(--og);display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0}
 .topic-ttl{font-size:14px;font-weight:800;line-height:1.3}
 .topic-meta{font-size:11px;color:var(--t3);margin-top:3px;font-weight:600}
+.topic-why{font-size:11px;color:var(--purple);margin-top:5px;font-weight:600;line-height:1.35}
+.topic-why b{color:var(--text)}
 .done-badge{font-size:10px;font-weight:800;color:var(--green);background:var(--gd);padding:4px 8px;border-radius:7px;flex-shrink:0}
 
 /* ── TABS ── */
@@ -347,6 +349,7 @@ textarea.input{resize:none;min-height:80px}
   <div class="scroll">
     <div id="home-foryou">
       <div id="daily-box"></div>
+      <div id="sugg-box"></div>
       <div class="slbl">À remplir <a onclick="navTo('search')">Voir tous les sujets →</a></div>
       <div id="todo-list"></div>
       <div class="ad"><div class="ad-tag">PUB</div><div class="ad-txt"><strong style="color:var(--text)">Emplacement publicitaire</strong> — version sans pub bientôt disponible</div><div class="ad-cta">Info →</div></div>
@@ -791,6 +794,7 @@ async function loadData() {
   topics = t;
   answers = a;
   lastLoad = Date.now();
+  suggCache = null;   // les suggestions dépendent des réponses
 }
 
 // Migration 004 (films / séries TMDB) exécutée ? Détecté au premier chargement.
@@ -1085,13 +1089,15 @@ function dailyTopic() {
   return pool[(day * 7919) % pool.length];
 }
 
-function topicRow(t, counts, mine) {
+// why : explication de la suggestion (HTML déjà échappé)
+function topicRow(t, counts, mine, why) {
   const n = counts[t.id] || 0;
   return `<div class="topic-row" onclick="openTopic('${t.id}')">
     <div class="topic-ico">${CAT_ICON[t.category] || '⭐'}</div>
     <div style="flex:1;min-width:0">
       <div class="topic-ttl">${esc(t.title)}</div>
       <div class="topic-meta">${esc(t.category)} · ${n} réponse${n > 1 ? 's' : ''}</div>
+      ${why ? `<div class="topic-why">${why}</div>` : ''}
     </div>
     ${mine.has(t.id) ? '<div class="done-badge">✓ Fait</div>' : '<div style="font-size:16px;color:var(--t3)">›</div>'}
   </div>`;
@@ -1122,12 +1128,26 @@ function renderHome() {
     </div>`;
   }
 
-  const todo = topics.filter(t => !mine.has(t.id) && (!d || t.id !== d.id))
-    .sort((a, b) => (counts[b.id] || 0) - (counts[a.id] || 0))
-    .slice(0, 8);
-  $('todo-list').innerHTML = todo.length
-    ? todo.map(t => topicRow(t, counts, mine)).join('')
-    : '<div class="empty"><div class="empty-ico">🏆</div>Tu as rempli tous les sujets !<br>Propose le tien avec le bouton +</div>';
+  // Suggérés pour toi (calcul asynchrone), puis « À remplir » sans doublon
+  const shown = new Set(d ? [d.id] : []);
+  const renderTodo = () => {
+    const todo = topics.filter(t => !mine.has(t.id) && !shown.has(t.id))
+      .sort((a, b) => (counts[b.id] || 0) - (counts[a.id] || 0))
+      .slice(0, 6);
+    $('todo-list').innerHTML = todo.length
+      ? todo.map(t => topicRow(t, counts, mine)).join('')
+      : '<div class="empty"><div class="empty-ico">🏆</div>Tu as rempli tous les sujets !<br>Propose le tien avec le bouton +</div>';
+  };
+  if (!suggCache) $('sugg-box').innerHTML = '<div class="slbl">✨ Suggérés pour toi</div>' + LOADER;
+  getSuggestions().then(list => {
+    if (stack[stack.length - 1] !== 'home') return;
+    const top = pickVaried(list, 4, shown);
+    top.forEach(x => shown.add(x.t.id));
+    $('sugg-box').innerHTML = top.length
+      ? '<div class="slbl">✨ Suggérés pour toi</div>' + top.map(x => topicRow(x.t, counts, mine, x.why)).join('')
+      : '';
+    renderTodo();
+  }).catch(() => { $('sugg-box').innerHTML = ''; renderTodo(); });
 }
 
 function countdown() {
@@ -1229,18 +1249,20 @@ function renderSearch() {
   } else if (searchSort === 'recent') {
     list.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   } else {
-    // Suggérés : sujets non remplis, dans tes catégories favorites d'abord
-    const affinity = {};
-    answers.filter(a => a.user_id === me.id).forEach(a => {
-      const c = topicById(a.topic_id)?.category;
-      if (c) affinity[c] = (affinity[c] || 0) + 1;
-    });
-    list = list.filter(t => !mine.has(t.id));
-    list.sort((a, b) => ((affinity[b.category] || 0) * 100 + (counts[b.id] || 0)) - ((affinity[a.category] || 0) * 100 + (counts[a.id] || 0)));
+    // Suggérés : même moteur que l'accueil, avec l'explication
+    if (!suggCache) {
+      $('search-results').innerHTML = LOADER;
+      getSuggestions().then(() => { if (searchSort === 'suggested' && stack[stack.length - 1] === 'search') renderSearch(); })
+        .catch(() => { $('search-results').innerHTML = '<div class="empty">Suggestions indisponibles</div>'; });
+      return;
+    }
+    const rank = new Map(suggCache.list.map((x, i) => [x.t.id, i]));
+    list = list.filter(t => rank.has(t.id)).sort((a, b) => rank.get(a.id) - rank.get(b.id));
   }
+  const whyOf = searchSort === 'suggested' && suggCache ? new Map(suggCache.list.map(x => [x.t.id, x.why])) : new Map();
 
   $('search-results').innerHTML = list.length
-    ? list.map(t => topicRow(t, counts, mine)).join('')
+    ? list.map(t => topicRow(t, counts, mine, whyOf.get(t.id))).join('')
     : `<div class="empty"><div class="empty-ico">🔍</div>Aucun sujet trouvé.<br><br>
        <button class="btn btn-primary" style="width:auto;padding:0 20px;height:44px" onclick="startCreate()">Créer ce sujet +</button></div>`;
 }
@@ -1296,7 +1318,133 @@ function updateFilterButtons() {
 
 function setIncludeDemo(v) {
   includeDemo = v;
+  suggCache = null;
   writePref('includeDemo', v);
+}
+
+// ─────────────────────────────────────────
+// SUGGESTIONS : quels sujets proposer, et pourquoi
+// ─────────────────────────────────────────
+// Quatre signaux, combinés en un score ; l'explication affichée est celle du signal le plus fort :
+//  👯 affinités   : des personnes qui ont les mêmes réponses que toi ont rempli ce sujet
+//  🔗 sujets liés : ceux qui ont rempli un de tes sujets ont souvent rempli celui-ci
+//  🎬 catégories  : tu remplis beaucoup de sujets de cette catégorie
+//  🎂 génération  : populaire dans ta tranche d'âge
+//  🔥 à défaut    : parmi les plus remplis
+let suggCache = null;   // { list: [{ t, score, why }] }
+
+async function getSuggestions() {
+  if (suggCache) return suggCache.list;
+  const mineSet = myTopicIds();
+  const myTopics = [...mineSet];
+  const okUser = p => p && (includeDemo || !p.is_demo);
+  const usersByTopic = {};
+  const profOf = {};
+  answers.forEach(a => {
+    if (!okUser(a.profiles)) return;
+    (usersByTopic[a.topic_id] = usersByTopic[a.topic_id] || new Set()).add(a.user_id);
+    profOf[a.user_id] = a.profiles;
+  });
+  const short = t => { const x = (t || '').replace(/^Top 5 /, ''); return x.length > 38 ? x.slice(0, 36) + '…' : x; };
+
+  // 👯 Affinités : réponses communes avec chaque personne, sur les sujets que j'ai remplis
+  let twins = [];
+  if (myTopics.length) {
+    const items = await fetchAll(() => sb.from('top_items')
+      .select(`top_id,${ITEM_COLS()},tops!inner(topic_id,user_id)`)
+      .in('tops.topic_id', myTopics.slice(0, 80))
+      .order('top_id').order('rank'));
+    const key = keyMaker(items);
+    const k = it => it.tops.topic_id + '|' + key(it);
+    const myKeys = new Set(items.filter(it => it.tops.user_id === me.id).map(k));
+    const common = {};
+    items.forEach(it => {
+      const u = it.tops.user_id;
+      if (u !== me.id && okUser(profOf[u]) && myKeys.has(k(it))) common[u] = (common[u] || 0) + 1;
+    });
+    twins = Object.entries(common).filter(([, n]) => n >= 2).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([u, n]) => ({ u, n }));
+    if (twins.length) {
+      const { data } = await sb.from('profiles').select('id,handle').in('id', twins.map(x => x.u));
+      const h = Object.fromEntries((data || []).map(p => [p.id, p.handle]));
+      twins.forEach(x => { x.handle = h[x.u] || '?'; });
+    }
+  }
+
+  // 🎬 Mes catégories
+  const catCount = {};
+  myTopics.forEach(id => { const c = topicById(id)?.category; if (c) catCount[c] = (catCount[c] || 0) + 1; });
+
+  // 🎂 Ma génération
+  const myBand = ageBand(profile?.birth_year);
+  const peers = new Set(myBand ? Object.keys(profOf).filter(u => u !== me.id && ageBand(profOf[u].birth_year) === myBand) : []);
+  const bandLabel = myBand === AGE_BANDS[0] ? 'moins de 25 ans' : myBand + ' ans';
+
+  const twinWeight = twins.reduce((sum, x) => sum + x.n, 0) || 1;
+  const maxUsers = Math.max(1, ...Object.values(usersByTopic).map(x => x.size));
+  const list = topics.filter(t => !mineSet.has(t.id)).map(t => {
+    const users = usersByTopic[t.id] || new Set();
+    const cands = [];
+
+    const tw = twins.filter(x => users.has(x.u));
+    if (tw.length) {
+      // part (pondérée par le nombre de réponses communes) de mes affinités qui ont rempli ce sujet
+      cands.push({ kind: 'twin', s: 3 * tw.reduce((sum, x) => sum + x.n, 0) / twinWeight,
+        why: `👯 <b>${esc(tw[0].handle)}</b>, qui a ${tw[0].n} réponses en commun avec toi, l'a rempli`
+          + (tw.length > 1 ? ` (et ${tw.length - 1} autre${tw.length > 2 ? 's' : ''} de tes affinités)` : '') });
+    }
+
+    let best = null;
+    myTopics.forEach(x => {
+      const ux = usersByTopic[x];
+      if (!ux) return;
+      let inter = 0, denom = 0;
+      ux.forEach(u => { if (u === me.id) return; denom++; if (users.has(u)) inter++; });
+      if (denom < 3) return;
+      const pr = inter / denom;
+      if (!best || pr > best.pr) best = { x, pr };
+    });
+    if (best && best.pr >= 0.3) {
+      cands.push({ kind: 'linked', s: 2 * best.pr, why: `🔗 ${Math.round(best.pr * 100)} % de ceux qui ont rempli « <b>${esc(short(topicById(best.x)?.title))}</b> » l'ont aussi rempli` });
+    }
+
+    const cc = catCount[t.category] || 0;
+    if (cc) cands.push({ kind: 'cat', s: 1.2 * cc / myTopics.length, why: `${CAT_ICON[t.category] || '⭐'} Tu as déjà rempli ${cc} top${cc > 1 ? 's' : ''} ${esc(t.category)}` });
+
+    if (peers.size >= 3) {
+      let n = 0;
+      peers.forEach(u => { if (users.has(u)) n++; });
+      const pr = n / peers.size;
+      if (pr >= 0.3) cands.push({ kind: 'age', s: 0.8 * pr, why: `🎂 Rempli par ${Math.round(pr * 100)} % des ${bandLabel}` });
+    }
+
+    cands.push({ kind: 'pop', s: 0.5 * users.size / maxUsers, why: users.size ? `🔥 Parmi les plus remplis (${users.size} réponse${users.size > 1 ? 's' : ''})` : '✨ Nouveau sujet : sois le premier à répondre' });
+
+    const score = cands.reduce((sum, c) => sum + c.s, 0);
+    const top = cands.reduce((a, b) => (b.s > a.s ? b : a));
+    return { t, score, why: top.why, cands };
+  }).sort((a, b) => b.score - a.score);
+
+  suggCache = { list };
+  return list;
+}
+
+// Accueil : des raisons variées — d'abord le meilleur sujet pour chaque type de lien,
+// puis on complète avec les meilleurs scores
+function pickVaried(list, n, exclude) {
+  const picks = [];
+  const taken = new Set(exclude);
+  ['twin', 'linked', 'cat', 'age'].forEach(kind => {
+    if (picks.length >= n) return;
+    let best = null;
+    list.forEach(x => {
+      if (taken.has(x.t.id)) return;
+      const c = x.cands.find(c => c.kind === kind);
+      if (c && (!best || x.score > best.x.score)) best = { x, c };
+    });
+    if (best) { picks.push({ t: best.x.t, score: best.x.score, why: best.c.why }); taken.add(best.x.t.id); }
+  });
+  list.forEach(x => { if (picks.length < n && !taken.has(x.t.id)) { picks.push(x); taken.add(x.t.id); } });
+  return picks.sort((a, b) => b.score - a.score);
 }
 
 // ─────────────────────────────────────────
