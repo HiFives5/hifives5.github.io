@@ -202,6 +202,22 @@ textarea.input{resize:none;min-height:80px}
 .setting{margin:12px 16px 0;background:var(--card);border:1px solid var(--border);border-radius:var(--rsm);padding:14px;display:flex;align-items:center;gap:12px}
 .setting input{width:20px;height:20px;accent-color:var(--orange)}
 
+/* ── RETOURS UTILISATEURS ── */
+.icon-btn{width:36px;height:36px;border-radius:12px;background:var(--card2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer}
+.stars{display:flex;gap:6px;margin-bottom:16px}
+.star{font-size:30px;color:var(--bg3);cursor:pointer;line-height:1;-webkit-text-stroke:1px var(--b2)}
+.star.on{color:var(--gold);-webkit-text-stroke:0}
+.fb-card{margin:0 16px 10px;background:var(--card);border:1px solid var(--border);border-radius:var(--rsm);padding:14px}
+.fb-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--t3);font-weight:600;margin-bottom:8px}
+.fb-msg{font-size:14px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+.fb-reply{margin-top:10px;padding:10px 12px;border-radius:10px;background:var(--og);font-size:13px;line-height:1.45;white-space:pre-wrap}
+.fb-status{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
+.fb-status .copt{padding:5px 10px;font-size:12px}
+.kpis{display:flex;gap:8px;padding:4px 16px 12px}
+.kpi{flex:1;background:var(--card);border:1px solid var(--border);border-radius:var(--rsm);padding:10px;text-align:center}
+.kpi b{display:block;font-size:20px;font-weight:900;letter-spacing:-.5px}
+.kpi span{font-size:10px;color:var(--t3);font-weight:700;text-transform:uppercase;letter-spacing:.3px}
+
 /* ── SEARCH ── */
 .search-box{display:flex;align-items:center;gap:10px;background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:11px 14px;margin:4px 16px 6px}
 .search-box input{flex:1;border:none;outline:none;font-family:var(--font);font-size:16px;font-weight:600;color:var(--text);background:transparent;min-width:0}
@@ -313,7 +329,10 @@ textarea.input{resize:none;min-height:80px}
 <div id="page-home" class="page">
   <div class="screen-hdr">
     <div class="screen-title">Hi<span style="color:var(--orange)">Fives</span> ✋</div>
-    <div class="avatar" id="home-av" onclick="navTo('profile')">?</div>
+    <div style="display:flex;gap:8px">
+      <div class="icon-btn" onclick="openFeedback()" title="Donner mon avis">💬</div>
+      <div class="avatar" id="home-av" onclick="navTo('profile')">?</div>
+    </div>
   </div>
   <div class="feed-tabs">
     <button class="ftab active" id="htab-foryou" onclick="setHomeTab('foryou')">Pour toi</button>
@@ -467,7 +486,11 @@ textarea.input{resize:none;min-height:80px}
   </div>
   <div class="scroll">
     <div id="p-incomplete"></div>
-    <div style="padding:12px 16px 0"><button class="btn btn-ghost" style="height:44px;font-size:14px" onclick="openEditProfile()">✏️ Modifier mon profil</button></div>
+    <div id="p-admin"></div>
+    <div style="padding:12px 16px 0" class="row">
+      <button class="btn btn-ghost" style="flex:1;height:44px;font-size:14px" onclick="openEditProfile()">✏️ Mon profil</button>
+      <button class="btn btn-ghost" style="flex:1;height:44px;font-size:14px" onclick="openFeedback()">💬 Donner mon avis</button>
+    </div>
     <div class="xp-card">
       <div style="display:flex;justify-content:space-between">
         <span style="font-size:13px;font-weight:700">Progression</span>
@@ -482,6 +505,7 @@ textarea.input{resize:none;min-height:80px}
     </label>
     <div class="slbl">Mes tops</div>
     <div id="my-tops"></div>
+    <div id="p-feedback"></div>
     <div style="padding:16px">
       <button class="btn btn-ghost" onclick="doLogout()">Se déconnecter</button>
     </div>
@@ -559,6 +583,42 @@ textarea.input{resize:none;min-height:80px}
       <button class="btn btn-ghost" style="flex:1" onclick="resetFilters()">Réinitialiser</button>
       <button class="btn btn-primary" style="flex:1" onclick="applyFilters()">Appliquer</button>
     </div>
+  </div>
+</div>
+
+<!-- ══════ DONNER SON AVIS (modal) ══════ -->
+<div class="modal-bg" id="fb-modal" onclick="if(event.target===this)closeFeedback()">
+  <div class="modal-sheet">
+    <div class="mhandle"></div>
+    <div style="font-size:17px;font-weight:900;margin-bottom:4px">Donner mon avis</div>
+    <div class="hint" style="margin:0 0 16px">Un bug, une idée, une remarque ? Tout est lu, promis.</div>
+    <div id="fb-err" class="msg msg-err" style="display:none"></div>
+    <div class="mgroup">Type</div>
+    <div class="chip-group" id="fb-kinds"></div>
+    <div class="mgroup">Ta note de l'appli (facultatif)</div>
+    <div class="stars" id="fb-stars"></div>
+    <div class="mgroup">Message</div>
+    <textarea id="fb-msg" class="input" rows="4" maxlength="2000" placeholder="Dis-nous tout…" style="margin-bottom:14px"></textarea>
+    <div class="row">
+      <button class="btn btn-ghost" style="flex:1" onclick="closeFeedback()">Annuler</button>
+      <button class="btn btn-primary" style="flex:1" id="fb-send" onclick="sendFeedback()">Envoyer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════ ADMIN : TRAITER LES RETOURS ══════ -->
+<div id="page-admin" class="page">
+  <div class="sub-hdr">
+    <div class="back-btn" onclick="goBack()">←</div>
+    <div>
+      <div class="hdr-kicker" style="color:var(--t3)">Administration</div>
+      <div class="hdr-title">🛠️ Retours utilisateurs</div>
+    </div>
+  </div>
+  <div class="scroll" style="padding:12px 0 24px">
+    <div id="ad-kpis"></div>
+    <div class="fscr" id="ad-filters" style="padding-top:0"></div>
+    <div id="ad-list"></div>
   </div>
 </div>
 
@@ -793,6 +853,7 @@ const RENDERERS = {
   topic: () => renderTopic(currentTopicId),
   user: () => renderUser(currentUserId),
   answer: () => renderAnswer(currentAnswerId),
+  admin: () => renderAdmin(),
 };
 
 function showPage(name) {
@@ -1234,6 +1295,145 @@ async function renderTopic(id) {
 }
 
 // ─────────────────────────────────────────
+// RETOURS UTILISATEURS
+// ─────────────────────────────────────────
+const FB_KINDS  = { bug: '🐞 Bug', idee: '💡 Idée', avis: '💬 Avis' };
+const FB_STATUS = { nouveau: '🆕 Nouveau', en_cours: '⏳ En cours', traite: '✅ Traité', rejete: '🗂️ Classé' };
+let fbKind = 'avis';
+let fbRating = null;
+let adminFilter = 'nouveau';
+
+// Écran où se trouve l'utilisateur (aide à comprendre un bug)
+function pageContext() {
+  const cur = stack[stack.length - 1] || '';
+  const title = id => topicById(id)?.title || '';
+  if (cur === 'topic') return 'Sujet : ' + title(currentTopicId);
+  if (cur === 'fill') return 'Saisie : ' + (fillTopic?.title || '');
+  if (cur === 'success') return 'Résultat : ' + (fillTopic?.title || '');
+  return { home: 'Accueil', search: 'Sujets', profile: 'Profil', affinities: 'Affinités', create: 'Création de sujet',
+           user: 'Profil d\'un membre', answer: 'Réponse d\'un membre', admin: 'Admin' }[cur] || cur;
+}
+
+function openFeedback() {
+  fbKind = 'avis';
+  fbRating = null;
+  $('fb-msg').value = '';
+  $('fb-err').style.display = 'none';
+  renderFbControls();
+  $('fb-modal').classList.add('open');
+}
+function closeFeedback() { $('fb-modal').classList.remove('open'); }
+
+function renderFbControls() {
+  $('fb-kinds').innerHTML = Object.entries(FB_KINDS).map(([k, l]) =>
+    `<div class="copt ${k === fbKind ? 'sel' : ''}" onclick="fbKind='${k}';renderFbControls()">${l}</div>`).join('');
+  $('fb-stars').innerHTML = [1, 2, 3, 4, 5].map(n =>
+    `<span class="star ${fbRating >= n ? 'on' : ''}" onclick="fbRating=(fbRating===${n}?null:${n});renderFbControls()">★</span>`).join('');
+}
+
+async function sendFeedback() {
+  const message = $('fb-msg').value.trim();
+  if (!message) { $('fb-err').textContent = 'Écris un petit message 🙂'; $('fb-err').style.display = ''; return; }
+  const btn = $('fb-send');
+  btn.disabled = true;
+  const { error } = await sb.from('feedback').insert({
+    user_id: me.id, kind: fbKind, rating: fbRating, message,
+    page: pageContext(), user_agent: navigator.userAgent.slice(0, 300),
+  });
+  btn.disabled = false;
+  if (error) { $('fb-err').textContent = 'Envoi impossible : ' + error.message; $('fb-err').style.display = ''; return; }
+  closeFeedback();
+  toast('Merci ! Ton retour a bien été envoyé 🙏');
+  if (stack[stack.length - 1] === 'profile') renderMyFeedback();
+}
+
+const starsTxt = n => n ? '★'.repeat(n) + '☆'.repeat(5 - n) : '';
+
+// Profil : mes retours (+ accès admin)
+async function renderMyFeedback() {
+  const { data, error } = await sb.from('feedback').select('*').eq('user_id', me.id).order('created_at', { ascending: false });
+  if (error) { $('p-admin').innerHTML = $('p-feedback').innerHTML = ''; return; }   // migration 003 pas encore exécutée
+  let html = '';
+  if (profile.is_admin) {
+    const { count } = await sb.from('feedback').select('id', { count: 'exact', head: true }).eq('status', 'nouveau');
+    html += `<div style="padding:12px 16px 0"><button class="btn btn-primary" style="height:44px;font-size:14px" onclick="openAdmin()">🛠️ Retours utilisateurs${count ? ` (${count} nouveau${count > 1 ? 'x' : ''})` : ''}</button></div>`;
+  }
+  $('p-admin').innerHTML = html;
+  html = '';
+  if (data.length) {
+    html += '<div class="slbl">Mes retours</div>' + data.map(f => `
+      <div class="fb-card">
+        <div class="fb-head"><span>${FB_KINDS[f.kind]}</span><span>· ${timeAgo(f.created_at)}</span><span class="badge-pill" style="margin-left:auto">${FB_STATUS[f.status]}</span></div>
+        <div class="fb-msg">${esc(f.message)}</div>
+        ${f.reply ? `<div class="fb-reply"><strong>Réponse de HiFives :</strong> ${esc(f.reply)}</div>` : ''}
+      </div>`).join('');
+  }
+  $('p-feedback').innerHTML = html;
+}
+
+// Admin : traiter les retours
+function openAdmin() {
+  pushPage('admin');
+  renderAdmin();
+}
+
+async function renderAdmin() {
+  $('ad-list').innerHTML = LOADER;
+  const { data, error } = await sb.from('feedback')
+    .select('*, profiles!feedback_user_id_fkey(id,handle)')
+    .order('created_at', { ascending: false });
+  if (error) { $('ad-list').innerHTML = `<div class="empty">Erreur : ${esc(error.message)}</div>`; return; }
+
+  const rated = data.filter(f => f.rating);
+  const avg = rated.length ? (rated.reduce((s, f) => s + f.rating, 0) / rated.length).toFixed(1) : '–';
+  const byKind = k => data.filter(f => f.kind === k).length;
+  $('ad-kpis').innerHTML = `<div class="kpis">
+    <div class="kpi"><b>${data.length}</b><span>Retours</span></div>
+    <div class="kpi"><b>${avg}</b><span>Note /5</span></div>
+    <div class="kpi"><b>${byKind('bug')}</b><span>🐞 Bugs</span></div>
+    <div class="kpi"><b>${byKind('idee')}</b><span>💡 Idées</span></div>
+  </div>`;
+
+  const count = s => data.filter(f => f.status === s).length;
+  $('ad-filters').innerHTML = [...Object.keys(FB_STATUS), 'tous'].map(s =>
+    `<div class="fc ${s === adminFilter ? 'active' : ''}" onclick="adminFilter='${s}';renderAdmin()">${s === 'tous' ? `Tous (${data.length})` : `${FB_STATUS[s]} (${count(s)})`}</div>`).join('');
+
+  const list = adminFilter === 'tous' ? data : data.filter(f => f.status === adminFilter);
+  $('ad-list').innerHTML = list.length ? list.map(f => `
+    <div class="fb-card">
+      <div class="fb-head">
+        <span style="color:var(--text);font-weight:800">${FB_KINDS[f.kind]}</span>
+        ${f.rating ? `<span style="color:var(--gold)">${starsTxt(f.rating)}</span>` : ''}
+        <span style="margin-left:auto">${timeAgo(f.created_at)}</span>
+      </div>
+      <div class="fb-head" style="margin-top:-4px">
+        <span style="color:var(--orange);cursor:pointer" onclick="openUser('${f.profiles?.id}')">${esc(f.profiles?.handle || '?')}</span>
+        ${f.page ? `<span>· 📍 ${esc(f.page)}</span>` : ''}
+      </div>
+      <div class="fb-msg">${esc(f.message)}</div>
+      ${f.user_agent ? `<div class="hint" style="margin-top:6px;font-size:10px">${esc(f.user_agent)}</div>` : ''}
+      <div class="fb-status">${Object.entries(FB_STATUS).map(([s, l]) =>
+        `<div class="copt ${s === f.status ? 'sel' : ''}" onclick="setFeedbackStatus('${f.id}','${s}')">${l}</div>`).join('')}</div>
+      <textarea id="rep-${f.id}" class="input" rows="2" maxlength="2000" placeholder="Répondre à l'auteur (visible dans son profil)…" style="margin-top:12px;font-size:14px">${esc(f.reply || '')}</textarea>
+      <button class="btn btn-ghost" style="height:38px;font-size:13px;margin-top:8px" onclick="saveFeedbackReply('${f.id}')">💬 Enregistrer la réponse</button>
+    </div>`).join('')
+    : '<div class="empty"><div class="empty-ico">📭</div>Aucun retour ici.</div>';
+}
+
+async function setFeedbackStatus(id, status) {
+  const { error } = await sb.from('feedback').update({ status }).eq('id', id);
+  if (error) return toast('Erreur : ' + error.message);
+  renderAdmin();
+}
+
+async function saveFeedbackReply(id) {
+  const reply = $('rep-' + id).value.trim() || null;
+  const { error } = await sb.from('feedback').update({ reply }).eq('id', id);
+  if (error) return toast('Erreur : ' + error.message);
+  toast('Réponse enregistrée ✓');
+}
+
+// ─────────────────────────────────────────
 // LA RÉPONSE D'UNE PERSONNE (son top 5 vs le mien)
 // ─────────────────────────────────────────
 function openAnswer(topId) {
@@ -1645,6 +1845,7 @@ async function renderProfile() {
   $('p-xp-next').textContent = next ? `${next - pts} pts avant le niveau ${lvl + 1} (${LEVEL_NAMES[lvl]})` : 'Niveau max atteint 🏆';
   $('demo-toggle').checked = includeDemo;
   $('my-tops').innerHTML = myTopRows(me.id, likes);
+  renderMyFeedback();
 }
 
 function openEditProfile() {

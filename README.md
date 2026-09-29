@@ -30,6 +30,8 @@ supabase/
 Une fois qu'il y a de vraies données, **ne plus jamais relancer `schema.sql`** (il efface tout).
 Les évolutions se font par des fichiers `supabase/migrations/NNN_*.sql`, à exécuter **une seule fois chacun**, dans l'ordre :
 - `002_plus_de_sujets.sql` : 11 nouvelles catégories et ~80 nouveaux sujets.
+- `003_retours_utilisateurs.sql` : retours utilisateurs (bouton 💬) + rôle administrateur.
+  Puis, pour devenir admin : `update public.profiles set is_admin = true where handle = '@ton_pseudo';`
 
 ### 2. Mise en ligne (GitHub Pages)
 1. Sur GitHub : **Settings → Pages → Build and deployment → Source : GitHub Actions**.
