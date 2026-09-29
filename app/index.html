@@ -54,6 +54,15 @@ button{font-family:var(--font)}
 .nav-btn{display:flex;flex-direction:column;align-items:center;gap:3px;background:none;border:none;cursor:pointer;padding:4px 10px}
 .nav-ico{font-size:19px;opacity:.35;transition:opacity .2s}
 .nav-lbl{font-size:10px;font-weight:700;color:var(--t3);transition:color .2s}
+.nav-btn{position:relative}
+.nav-badge{position:absolute;top:0;right:6px;min-width:17px;height:17px;padding:0 4px;border-radius:9px;background:var(--orange);color:#fff;font-size:10px;font-weight:800;display:none;align-items:center;justify-content:center;box-shadow:0 0 0 2px var(--bg2)}
+.hi5-row{margin:0 16px 8px;background:var(--card);border:1px solid var(--border);border-radius:var(--rsm);padding:11px 14px;display:flex;align-items:center;gap:12px}
+.hi5-row.new{border-color:rgba(255,92,46,.4);background:var(--og)}
+.hi5-txt{flex:1;min-width:0;font-size:13px;line-height:1.4}
+.hi5-txt .who{color:var(--orange);font-weight:800;cursor:pointer}
+.hi5-txt .what{color:var(--t2)}
+.hi5-from{font-size:12px;color:var(--t2);margin:-4px 0 10px;line-height:1.5}
+.hi5-from .who{color:var(--orange);font-weight:700;cursor:pointer}
 .nav-btn.active .nav-ico{opacity:1}
 .nav-btn.active .nav-lbl{color:var(--orange)}
 .nav-plus{width:46px;height:46px;background:var(--orange);border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:24px;color:white;margin-top:-14px;box-shadow:0 8px 20px rgba(255,92,46,.4);cursor:pointer;border:none;transition:transform .15s}
@@ -492,7 +501,7 @@ textarea.input{resize:none;min-height:80px}
       <div class="p-div"></div>
       <div class="p-si"><div class="p-sn" id="p-pts">0</div><div class="p-sl">Points</div></div>
       <div class="p-div"></div>
-      <div class="p-si"><div class="p-sn" id="p-likes">0</div><div class="p-sl">✋ High fives</div></div>
+      <div class="p-si" style="cursor:pointer" onclick="document.getElementById('p-hi5').scrollIntoView({behavior:'smooth'})"><div class="p-sn" id="p-likes">0</div><div class="p-sl">✋ High fives</div></div>
     </div>
   </div>
   <div class="scroll">
@@ -514,6 +523,7 @@ textarea.input{resize:none;min-height:80px}
       <input type="checkbox" id="demo-toggle" onchange="setIncludeDemo(this.checked)">
       <div><div style="font-size:13px;font-weight:700">Inclure les profils de démo</div><div style="font-size:11px;color:var(--t3);margin-top:2px">Réponses fictives pour tester l'appli</div></div>
     </label>
+    <div id="p-hi5"></div>
     <div class="slbl">Mes tops</div>
     <div id="my-tops"></div>
     <div id="p-feedback"></div>
@@ -664,7 +674,7 @@ textarea.input{resize:none;min-height:80px}
   <button class="nav-btn" id="nav-search" onclick="navTo('search')"><div class="nav-ico">🔍</div><div class="nav-lbl">Sujets</div></button>
   <button class="nav-plus" onclick="startCreate()">+</button>
   <button class="nav-btn" id="nav-affinities" onclick="navTo('affinities')"><div class="nav-ico">💡</div><div class="nav-lbl">Affinités</div></button>
-  <button class="nav-btn" id="nav-profile" onclick="navTo('profile')"><div class="nav-ico">👤</div><div class="nav-lbl">Profil</div></button>
+  <button class="nav-btn" id="nav-profile" onclick="navTo('profile')"><div class="nav-ico">👤</div><div class="nav-lbl">Profil</div><span class="nav-badge" id="hi5-badge"></span></button>
 </div>
 
 <script>
@@ -1104,6 +1114,7 @@ function topicRow(t, counts, mine, why) {
 }
 
 function renderHome() {
+  updateHi5Badge();
   $('home-av').textContent = initialOf(profile);
   setHomeTab(homeTab);
   const counts = countByTopic();
@@ -1495,13 +1506,17 @@ async function renderTopic(id) {
   if (mineAns) {
     const myItems = items.filter(it => it.top_id === mineAns.id).sort((a, b) => a.rank - b.rank);
     myItems.forEach(it => myKeys.add(itemKey(it)));
-    $('tp-mine').innerHTML = `<div class="block"><div class="block-lbl">Mon top 5 <span class="count-pill" id="tp-mine-likes">✋ …</span></div>
+    $('tp-mine').innerHTML = `<div class="block"><div class="block-lbl">Mon top 5 <span class="count-pill" id="tp-mine-likes">✋ …</span></div><div class="hi5-from" id="tp-mine-from"></div>
       <ul class="clist" style="padding:0">${myItems.map(it => `<li><div class="rank ${it.rank === 1 ? 'r1' : ''}">${it.rank}</div>${esc(itemLabel(it))}</li>`).join('')}</ul></div>`;
-    sb.from('likes').select('user_id').eq('top_id', mineAns.id).then(({ data }) => {
-      const n = (data || []).length;
-      const el = $('tp-mine-likes');
-      if (el) el.textContent = `✋ ${n} high five${n > 1 ? 's' : ''}`;
-    });
+    sb.from('likes').select('created_at,profiles!likes_user_id_fkey(id,handle)').eq('top_id', mineAns.id).order('created_at', { ascending: false })
+      .then(({ data }) => {
+        const list = data || [];
+        const n = list.length;
+        const el = $('tp-mine-likes');
+        if (el) el.textContent = `✋ ${n} high five${n > 1 ? 's' : ''}`;
+        const box = $('tp-mine-from');
+        if (box && n) box.innerHTML = '✋ De la part de ' + whoList(list.map(l => l.profiles));
+      });
   }
 
   // Classement agrégé
@@ -1518,6 +1533,66 @@ async function renderTopic(id) {
   $('tp-recent').innerHTML = rows.length
     ? rows.map(r => topCard({ ...r, top_items: byTop[r.id] || [] }, false)).join('')
     : '<div style="font-size:13px;color:var(--t3);padding:0 20px 16px">Aucune réponse pour l\'instant.</div>';
+}
+
+// ─────────────────────────────────────────
+// HIGH FIVES REÇUS (qui m'a tapé dans la main)
+// ─────────────────────────────────────────
+// « @a, @b et 3 autres » (pseudos cliquables)
+function whoList(profiles, max = 3) {
+  const ps = profiles.filter(Boolean);
+  const shown = ps.slice(0, max).map(p => `<span class="who" onclick="event.stopPropagation();openUser('${p.id}')">${esc(p.handle)}</span>`);
+  const rest = ps.length - shown.length;
+  if (!rest) return shown.length > 1 ? shown.slice(0, -1).join(', ') + ' et ' + shown[shown.length - 1] : shown.join('');
+  return shown.join(', ') + ` et ${rest} autre${rest > 1 ? 's' : ''}`;
+}
+
+async function fetchHi5Received(limit) {
+  const { data, error } = await sb.from('likes')
+    .select('created_at,top_id,profiles!likes_user_id_fkey(id,handle,is_demo),tops!inner(topic_id,user_id)')
+    .eq('tops.user_id', me.id)
+    .neq('user_id', me.id)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data || []).filter(l => includeDemo || !l.profiles?.is_demo);
+}
+
+// Pastille sur l'onglet Profil : high fives reçus depuis ma dernière visite du profil
+async function updateHi5Badge() {
+  const seen = readPref('hi5Seen', null);
+  const b = $('hi5-badge');
+  if (!seen) { writePref('hi5Seen', new Date().toISOString()); b.style.display = 'none'; return; }
+  try {
+    const list = await fetchHi5Received(50);
+    const n = list.filter(l => l.created_at > seen).length;
+    b.textContent = n > 9 ? '9+' : n;
+    b.style.display = n ? 'flex' : 'none';
+  } catch (e) { b.style.display = 'none'; }
+}
+
+async function renderHi5Received() {
+  const box = $('p-hi5');
+  let list;
+  try { list = await fetchHi5Received(30); } catch (e) { box.innerHTML = ''; return; }
+  const seen = readPref('hi5Seen', '');
+  writePref('hi5Seen', new Date().toISOString());
+  $('hi5-badge').style.display = 'none';
+  if (!list.length) {
+    box.innerHTML = '<div class="slbl">✋ High fives reçus</div><div class="hint" style="padding:0 20px 4px">Pas encore de high five. Partage tes tops pour en recevoir !</div>';
+    return;
+  }
+  box.innerHTML = '<div class="slbl">✋ High fives reçus</div>' + list.slice(0, 15).map(l => {
+    const p = l.profiles || {};
+    const t = topicById(l.tops?.topic_id);
+    return `<div class="hi5-row ${seen && l.created_at > seen ? 'new' : ''}" style="cursor:pointer" onclick="openTopic('${l.tops?.topic_id}')">
+      <div class="cav" style="background:${colorFor(p.handle)}" onclick="event.stopPropagation();openUser('${p.id}')">${initialOf(p)}</div>
+      <div class="hi5-txt"><span class="who" onclick="event.stopPropagation();openUser('${p.id}')">${esc(p.handle || '?')}</span>
+        <span class="what"> t'a fait un high five sur</span> <strong>${esc(t ? t.title.replace(/^Top 5 /, 'ton top 5 ') : 'ton top 5')}</strong>
+        <div class="topic-meta">${timeAgo(l.created_at)}</div></div>
+      <div style="font-size:20px">✋</div>
+    </div>`;
+  }).join('');
 }
 
 // ─────────────────────────────────────────
@@ -2148,6 +2223,7 @@ async function renderProfile() {
   $('demo-toggle').checked = includeDemo;
   $('my-tops').innerHTML = myTopRows(me.id, likes);
   renderMyFeedback();
+  renderHi5Received();
 }
 
 function openEditProfile() {
