@@ -32,6 +32,13 @@ Les évolutions se font par des fichiers `supabase/migrations/NNN_*.sql`, à ex�
 - `002_plus_de_sujets.sql` : 11 nouvelles catégories et ~80 nouveaux sujets.
 - `003_retours_utilisateurs.sql` : retours utilisateurs (bouton 💬) + rôle administrateur.
   Puis, pour devenir admin : `update public.profiles set is_admin = true where handle = '@ton_pseudo';`
+- `004_films_series_tmdb.sql` : sujets films / séries reliés à TMDB (identifiant unique par film, titre FR, année, affiche).
+
+### Films et séries (TMDB)
+1. Crée un compte gratuit sur [themoviedb.org](https://www.themoviedb.org/signup), puis **Paramètres → API** → demande une clé (usage personnel / non commercial).
+2. Copie la **clé API (v3)** ou le **jeton d'accès en lecture (v4)** dans `app/index.html`, ligne `const TMDB_KEY = '';`.
+3. Sans clé, les sujets films / séries restent en saisie libre (l'appli fonctionne normalement).
+4. Le type d'un sujet (`movie`, `tv` ou vide) se règle dans Table Editor → `topics` → `entity_type`.
 
 ### 2. Mise en ligne (GitHub Pages)
 1. Sur GitHub : **Settings → Pages → Build and deployment → Source : GitHub Actions**.

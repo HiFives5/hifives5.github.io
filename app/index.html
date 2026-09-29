@@ -157,6 +157,12 @@ textarea.input{resize:none;min-height:80px}
 .ac-opt:first-child{border-top:none}
 .ac-opt:active,.ac-opt:hover{background:var(--og)}
 .ac-opt small{color:var(--t3);font-weight:600;margin-left:6px}
+.ac-opt.media{display:flex;align-items:center;gap:10px;padding:8px 12px}
+.ac-opt.media small{margin-left:0}
+.ac-poster{width:30px;height:45px;object-fit:cover;border-radius:4px;flex-shrink:0;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:14px}
+.ac-info{padding:11px 14px;font-size:13px;color:var(--t3)}
+.ac-box .input.invalid{border-color:rgba(255,80,80,.6)}
+.tmdb-note{font-size:10px;color:var(--t3);margin-top:14px;line-height:1.5}
 
 /* ── AGRÉGATS ── */
 .agg-row{margin-bottom:12px}
@@ -384,6 +390,8 @@ textarea.input{resize:none;min-height:80px}
       <p style="font-size:14px;color:var(--t3);margin-bottom:12px;font-weight:600">Formule le titre de ton top 5 :</p>
       <textarea id="top-title" class="input" rows="3" maxlength="110" placeholder="Ex : Top 5 films italiens de tous les temps" oninput="renderSimilar()"></textarea>
       <p class="hint">« Top 5 » est ajouté automatiquement si tu l'oublies.</p>
+      <div class="mgroup" style="margin-top:18px">Les réponses seront…</div>
+      <div class="chip-group" id="type-chips"></div>
       <div id="similar-box"></div>
     </div>
   </div>
@@ -664,6 +672,11 @@ textarea.input{resize:none;min-height:80px}
 const SUPABASE_URL = 'https://nhqlirthmhkabshdepqb.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ocWxpcnRobWhrYWJzaGRlcHFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMzE0NjksImV4cCI6MjA5MjYwNzQ2OX0.eSXHyFsIFWA_5wTczBRF7IdOUKjlBoUtKVY83wl289c';
 
+// Clé TMDB (themoviedb.org) : clé API v3 ou jeton de lecture v4. Vide = saisie libre pour tous les sujets.
+const TMDB_KEY = '';
+const TMDB_IMG = 'https://image.tmdb.org/t/p/w92';
+const ENTITY = { movie: { icon: '🎬', label: 'Films', one: 'film' }, tv: { icon: '📺', label: 'Séries', one: 'série' } };
+
 const CATEGORIES = [
   { k: 'Cinéma', i: '🎬' }, { k: 'Musique', i: '🎵' }, { k: 'Voyages', i: '✈️' }, { k: 'Sport', i: '⚽' },
   { k: 'Séries', i: '📺' }, { k: 'Gastronomie', i: '🍕' }, { k: 'Livres', i: '📚' }, { k: 'Jeux', i: '🎮' },
@@ -767,13 +780,50 @@ async function fetchAll(build) {
 // DONNÉES
 // ─────────────────────────────────────────
 async function loadData() {
+  if (hasMedia === null) {
+    const { error } = await sb.from('top_items').select('ext_id').limit(1);
+    hasMedia = !error;   // false tant que la migration 004 n'a pas été exécutée
+  }
   const [t, a] = await Promise.all([
-    fetchAll(() => sb.from('topics').select('id,title,category,created_by,is_official,created_at').order('created_at').order('id')),
+    fetchAll(() => sb.from('topics').select(TOPIC_COLS()).order('created_at').order('id')),
     fetchAll(() => sb.from('tops').select('id,topic_id,user_id,created_at,profiles!tops_user_id_fkey(country,birth_year,gender,is_demo)').order('created_at').order('id')),
   ]);
   topics = t;
   answers = a;
   lastLoad = Date.now();
+}
+
+// Migration 004 (films / séries TMDB) exécutée ? Détecté au premier chargement.
+let hasMedia = null;
+const TOPIC_COLS = () => 'id,title,category,created_by,is_official,created_at' + (hasMedia ? ',entity_type' : '');
+const ITEM_COLS  = () => 'rank,content' + (hasMedia ? ',ext_id,year,poster' : '');
+// Sujet relié à TMDB (films ou séries) : choix obligatoire dans la liste
+const isMedia = topic => !!(TMDB_KEY && hasMedia && topic && ENTITY[topic.entity_type]);
+
+// Libellé d'une réponse : « Pulp Fiction (1994) » pour un film TMDB
+const itemLabel = it => it.content + (it.year ? ` (${it.year})` : '');
+// Clé d'identité d'une réponse : l'identifiant TMDB s'il existe ; une réponse tapée
+// à la main (anciennes réponses, démo) est rapprochée du film TMDB de même titre.
+function keyMaker(items) {
+  const alias = {};
+  items.forEach(it => { if (it.ext_id) alias[norm(it.content)] = it.ext_id; });
+  return it => it.ext_id || alias[norm(it.content)] || norm(it.content);
+}
+
+async function tmdbSearch(type, q) {
+  const bearer = TMDB_KEY.length > 40;   // jeton v4 (long) ou clé v3 (32 caractères)
+  const url = `https://api.themoviedb.org/3/search/${type}?query=${encodeURIComponent(q)}&language=fr-FR&include_adult=false`
+    + (bearer ? '' : '&api_key=' + TMDB_KEY);
+  const res = await fetch(url, bearer ? { headers: { Authorization: 'Bearer ' + TMDB_KEY } } : {});
+  if (!res.ok) throw new Error('TMDB ' + res.status);
+  const j = await res.json();
+  return (j.results || []).slice(0, 7).map(r => ({
+    content: r.title || r.name,
+    orig: r.original_title || r.original_name,
+    ext_id: `tmdb:${type}:${r.id}`,
+    year: parseInt((r.release_date || r.first_air_date || '').slice(0, 4), 10) || null,
+    poster: r.poster_path || null,
+  }));
 }
 
 // Les données sont chargées à l'ouverture ; on les rafraîchit si elles ont plus d'une minute
@@ -823,7 +873,7 @@ function countByTopic() {
 
 async function fetchTopicItems(topicId) {
   return fetchAll(() => sb.from('top_items')
-    .select('top_id,rank,content,tops!inner(topic_id)')
+    .select(`top_id,${ITEM_COLS()},tops!inner(topic_id)`)
     .eq('tops.topic_id', topicId)
     .order('top_id').order('rank'));
 }
@@ -832,12 +882,14 @@ async function fetchTopicItems(topicId) {
 function aggregate(items, allowedTopIds) {
   const m = new Map();
   const tops = new Set();
+  const key = keyMaker(items);
   for (const it of items) {
     if (!allowedTopIds.has(it.top_id)) continue;
     tops.add(it.top_id);
-    const k = norm(it.content);
+    const k = key(it);
     let e = m.get(k);
-    if (!e) m.set(k, e = { key: k, content: it.content, n: 0, top3: 0, score: 0, first: 0 });
+    if (!e) m.set(k, e = { key: k, content: itemLabel(it), n: 0, top3: 0, score: 0, first: 0 });
+    if (it.ext_id && !e.media) { e.content = itemLabel(it); e.media = true; }   // libellé TMDB prioritaire
     e.n++;
     if (it.rank <= 3) e.top3++;
     e.score += 6 - it.rank;
@@ -1089,7 +1141,7 @@ async function renderActivity() {
   const box = $('home-activity');
   box.innerHTML = LOADER;
   const { data, error } = await sb.from('tops')
-    .select('id,topic_id,user_id,created_at,profiles!tops_user_id_fkey(id,name,handle,country,birth_year,gender,is_demo),likes(user_id),top_items(rank,content)')
+    .select(`id,topic_id,user_id,created_at,profiles!tops_user_id_fkey(id,name,handle,country,birth_year,gender,is_demo),likes(user_id),top_items(${ITEM_COLS()})`)
     .neq('user_id', me.id)
     .order('created_at', { ascending: false })
     .limit(60);
@@ -1120,7 +1172,7 @@ function topCard(t, withTopic) {
     </div>
     ${withTopic ? `<div class="ctitle" onclick="openTopic('${t.topic_id}')">${esc(topic.title)} <span style="font-size:12px;color:var(--t3)">›</span></div>` : ''}
     <ul class="clist">
-      ${items.map((it, i) => `<li><div class="rank ${i === 0 ? 'r1' : ''}">${it.rank}</div>${esc(it.content)}</li>`).join('')}
+      ${items.map((it, i) => `<li><div class="rank ${i === 0 ? 'r1' : ''}">${it.rank}</div>${esc(itemLabel(it))}</li>`).join('')}
     </ul>
     <div class="ca">
       <button class="act ${liked ? 'liked' : ''}" data-n="${likes.length}" data-h="${esc(p.handle)}" title="High five !" onclick="toggleLike('${t.id}',this)">✋ ${likes.length}</button>
@@ -1291,11 +1343,12 @@ async function renderTopic(id) {
 
   // Mon top
   const myKeys = new Set();
+  const itemKey = keyMaker(items);
   if (mineAns) {
     const myItems = items.filter(it => it.top_id === mineAns.id).sort((a, b) => a.rank - b.rank);
-    myItems.forEach(it => myKeys.add(norm(it.content)));
+    myItems.forEach(it => myKeys.add(itemKey(it)));
     $('tp-mine').innerHTML = `<div class="block"><div class="block-lbl">Mon top 5 <span class="count-pill" id="tp-mine-likes">✋ …</span></div>
-      <ul class="clist" style="padding:0">${myItems.map(it => `<li><div class="rank ${it.rank === 1 ? 'r1' : ''}">${it.rank}</div>${esc(it.content)}</li>`).join('')}</ul></div>`;
+      <ul class="clist" style="padding:0">${myItems.map(it => `<li><div class="rank ${it.rank === 1 ? 'r1' : ''}">${it.rank}</div>${esc(itemLabel(it))}</li>`).join('')}</ul></div>`;
     sb.from('likes').select('user_id').eq('top_id', mineAns.id).then(({ data }) => {
       const n = (data || []).length;
       const el = $('tp-mine-likes');
@@ -1470,7 +1523,7 @@ function openAnswer(topId) {
 async function renderAnswer(topId) {
   $('an-body').innerHTML = LOADER;
   const { data: t } = await sb.from('tops')
-    .select('id,topic_id,user_id,created_at,profiles!tops_user_id_fkey(id,name,handle,is_demo),likes(user_id),top_items(rank,content)')
+    .select(`id,topic_id,user_id,created_at,profiles!tops_user_id_fkey(id,name,handle,is_demo),likes(user_id),top_items(${ITEM_COLS()})`)
     .eq('id', topId).maybeSingle();
   if (currentAnswerId !== topId) return;
   if (!t) { $('an-body').innerHTML = '<div class="empty">Réponse introuvable</div>'; return; }
@@ -1483,19 +1536,20 @@ async function renderAnswer(topId) {
   const mine = myAnswer(t.topic_id);
   let myItems = [];
   if (mine) {
-    const { data } = await sb.from('top_items').select('rank,content').eq('top_id', mine.id).order('rank');
+    const { data } = await sb.from('top_items').select(ITEM_COLS()).eq('top_id', mine.id).order('rank');
     if (currentAnswerId !== topId) return;
     myItems = data || [];
   }
-  const myKeys = new Set(myItems.map(it => norm(it.content)));
   const theirs = [...(t.top_items || [])].sort((a, b) => a.rank - b.rank);
-  const theirKeys = new Set(theirs.map(it => norm(it.content)));
-  const common = theirs.filter(it => myKeys.has(norm(it.content))).length;
+  const itemKey = keyMaker([...theirs, ...myItems]);
+  const myKeys = new Set(myItems.map(itemKey));
+  const theirKeys = new Set(theirs.map(itemKey));
+  const common = theirs.filter(it => myKeys.has(itemKey(it))).length;
   const likes = t.likes || [];
   const liked = likes.some(l => l.user_id === me.id);
   const list = (items, hlKeys) => `<ul class="clist" style="padding:0">${items.map(it => {
-    const hl = hlKeys.has(norm(it.content));
-    return `<li><div class="rank ${it.rank === 1 ? 'r1' : ''}">${it.rank}</div><span style="flex:1;${hl ? 'color:var(--orange)' : ''}">${esc(it.content)}</span>${hl ? '<span class="st-tag" style="color:var(--orange);background:var(--og)">en commun</span>' : ''}</li>`;
+    const hl = hlKeys.has(itemKey(it));
+    return `<li><div class="rank ${it.rank === 1 ? 'r1' : ''}">${it.rank}</div><span style="flex:1;${hl ? 'color:var(--orange)' : ''}">${esc(itemLabel(it))}</span>${hl ? '<span class="st-tag" style="color:var(--orange);background:var(--og)">en commun</span>' : ''}</li>`;
   }).join('')}</ul>`;
 
   $('an-body').innerHTML = `
@@ -1524,8 +1578,12 @@ async function renderAnswer(topId) {
 // ─────────────────────────────────────────
 let fillTopic = null;
 let fillExisting = null;   // ma réponse existante (modification)
-let fillItems = ['', '', '', '', ''];
+let fillItems = [];        // 5 × { content, ext_id?, year?, poster? }
 let fillPool = [];
+let fillMedia = null;      // 'movie' | 'tv' si le sujet est relié à TMDB
+
+const emptyItem = () => ({ content: '' });
+const fillKey = it => it.ext_id || norm(it.content);
 
 async function openFillById(id) {
   const t = await ensureTopic(id);
@@ -1535,17 +1593,19 @@ async function openFillById(id) {
 async function openFill(topic, replace) {
   fillTopic = topic;
   fillExisting = myAnswer(topic.id) || null;
-  fillItems = ['', '', '', '', ''];
+  fillMedia = isMedia(topic) ? topic.entity_type : null;
+  fillItems = Array.from({ length: 5 }, emptyItem);
   fillPool = [];
   $('fill-cat').textContent = (CAT_ICON[topic.category] || '') + ' ' + topic.category;
   $('fill-title').textContent = topic.title;
   $('fill-btn').textContent = fillExisting ? 'Enregistrer ✋' : 'Publier mon top ✋';
   $('fill-btn').disabled = false;
   const others = answers.filter(a => a.topic_id === topic.id && a.user_id !== me.id && matchesFilters(a.profiles)).length;
-  $('fill-teaser').innerHTML = fillExisting ? '' : `<div class="insight" style="margin:0 0 18px;padding:14px 16px">
+  $('fill-teaser').innerHTML = (fillExisting ? '' : `<div class="insight" style="margin:0 0 18px;padding:14px 16px">
     <div class="ins-text">${others
       ? `🔒 <strong style="color:var(--text)">${others} personne${others > 1 ? 's ont' : ' a'} déjà répondu.</strong> Découvre leur classement et compare-toi après avoir publié.`
-      : `✨ <strong style="color:var(--text)">Personne n'a encore répondu.</strong> Ton top sera la référence !`}</div></div>`;
+      : `✨ <strong style="color:var(--text)">Personne n'a encore répondu.</strong> Ton top sera la référence !`}</div></div>`)
+    + (fillMedia ? `<div class="msg msg-ok" style="margin-bottom:16px">${ENTITY[fillMedia].icon} Tape le titre et <strong>choisis ${fillMedia === 'movie' ? 'le film' : 'la série'} dans la liste</strong> : fini les doublons et les fautes d'orthographe.</div>` : '');
   $('fill-rows').innerHTML = LOADER;
   replace ? replacePage('fill') : pushPage('fill');
 
@@ -1555,23 +1615,34 @@ async function openFill(topic, replace) {
   ]);
   if (fillTopic !== topic) return;
 
-  // Pool de suggestions : liste de départ + réponses déjà données par la communauté
+  // Pool de suggestions affiché quand la case est vide (ou pour filtrer en saisie libre)
   const pool = new Map();
-  const add = (content, w) => {
-    const k = norm(content);
+  const add = (it, w) => {
+    const k = fillKey(it);
     if (!k) return;
     const e = pool.get(k);
-    if (e) e.score += w; else pool.set(k, { content: content.trim(), key: k, f: fold(content), score: w });
+    if (e) e.score += w;
+    else pool.set(k, { content: it.content.trim(), ext_id: it.ext_id || null, year: it.year || null, poster: it.poster || null, key: k, f: fold(it.content), score: w });
   };
-  (sugg.data || []).forEach(s => add(s.content, s.weight));
-  items.forEach(it => add(it.content, 3));
+  if (fillMedia) {
+    // Films / séries : uniquement des réponses TMDB déjà choisies par la communauté
+    items.filter(it => it.ext_id).forEach(it => add(it, 3));
+  } else {
+    (sugg.data || []).forEach(sg => add({ content: sg.content }, sg.weight));
+    items.forEach(it => add({ content: it.content }, 3));
+  }
   fillPool = [...pool.values()].sort((a, b) => b.score - a.score);
 
   if (fillExisting) {
-    items.filter(it => it.top_id === fillExisting.id).forEach(it => { fillItems[it.rank - 1] = it.content; });
+    items.filter(it => it.top_id === fillExisting.id).forEach(it => {
+      fillItems[it.rank - 1] = { content: it.content, ext_id: it.ext_id || null, year: it.year || null, poster: it.poster || null };
+    });
   }
   renderFillRows();
 }
+
+// Une case est « valide » : non vide, et choisie dans TMDB pour un sujet films / séries
+const itemOk = it => !!it.content.trim() && (!fillMedia || !!it.ext_id);
 
 function renderFillRows() {
   const box = $('fill-rows');
@@ -1581,14 +1652,14 @@ function renderFillRows() {
     const row = document.createElement('div');
     row.className = 'rank-row';
     const rn = document.createElement('div');
-    rn.className = 'rank-n' + (fillItems[i] ? ' ok' : '');
+    rn.className = 'rank-n' + (itemOk(fillItems[i]) ? ' ok' : '');
     rn.textContent = i + 1;
     const acBox = document.createElement('div');
     acBox.className = 'ac-box';
     const inp = document.createElement('input');
     inp.className = 'input';
-    inp.value = fillItems[i];
-    inp.placeholder = 'Ton #' + (i + 1) + '…';
+    inp.value = fillItems[i].ext_id ? itemLabel(fillItems[i]) : fillItems[i].content;
+    inp.placeholder = fillMedia ? `Titre ${fillMedia === 'movie' ? 'du film' : 'de la série'} #${i + 1}…` : 'Ton #' + (i + 1) + '…';
     inp.autocomplete = 'off';
     inp.maxLength = 100;
     inp.enterKeyHint = i < 4 ? 'next' : 'done';
@@ -1600,49 +1671,90 @@ function renderFillRows() {
     inputs.push(inp);
 
     const focusNext = () => { if (inputs[i + 1]) inputs[i + 1].focus(); else inp.blur(); };
+    const markInvalid = () => inp.classList.toggle('invalid', !!fillMedia && !!inp.value.trim() && !fillItems[i].ext_id);
+    const choose = p => {
+      fillItems[i] = { content: p.content, ext_id: p.ext_id || null, year: p.year || null, poster: p.poster || null };
+      inp.value = p.ext_id ? itemLabel(p) : p.content;
+      rn.className = 'rank-n ok';
+      inp.classList.remove('invalid');
+      list.style.display = 'none';
+      list.innerHTML = '';
+      focusNext();
+    };
+    const show = (opts, info) => {
+      list.innerHTML = '';
+      opts.forEach(p => {
+        const o = document.createElement('div');
+        if (fillMedia) {
+          o.className = 'ac-opt media';
+          o.innerHTML = (p.poster ? `<img class="ac-poster" src="${TMDB_IMG + p.poster}" alt="" loading="lazy">` : `<div class="ac-poster">${ENTITY[fillMedia].icon}</div>`)
+            + `<div><div>${esc(p.content)}${p.year ? ` <small>${p.year}</small>` : ''}</div>`
+            + (p.orig && fold(p.orig) !== fold(p.content) ? `<small>${esc(p.orig)}</small>` : '') + '</div>';
+        } else {
+          o.className = 'ac-opt';
+          o.textContent = p.content;
+        }
+        o.addEventListener('pointerdown', e => { e.preventDefault(); choose(p); });
+        list.appendChild(o);
+      });
+      if (info) list.insertAdjacentHTML('beforeend', `<div class="ac-info">${info}</div>`);
+      list.style.display = (opts.length || info) && document.activeElement === inp ? 'block' : 'none';
+    };
+
+    let seq = 0, timer = null;
     const refresh = () => {
       const q = fold(inp.value);
-      const taken = new Set(fillItems.map((v, j) => j !== i ? norm(v) : '').filter(Boolean));
+      const taken = new Set(fillItems.map((v, j) => j !== i ? fillKey(v) : '').filter(Boolean));
+      if (fillMedia && fillItems[i].ext_id) return show([]);          // déjà choisi
+      if (fillMedia && q.length >= 2) {
+        // Recherche TMDB (avec un petit délai pendant la frappe)
+        clearTimeout(timer);
+        const my = ++seq;
+        timer = setTimeout(async () => {
+          show([], 'Recherche…');
+          let res;
+          try { res = await tmdbSearch(fillMedia, inp.value.trim()); }
+          catch (e) { if (my === seq) show([], 'Recherche indisponible pour le moment 😕'); return; }
+          if (my !== seq) return;
+          res = res.filter(r => !taken.has(r.ext_id));
+          show(res, res.length ? '' : `Aucun${fillMedia === 'movie' ? ' film' : 'e série'} trouvé${fillMedia === 'movie' ? '' : 'e'} — essaie le titre original ?`);
+        }, 250);
+        return;
+      }
       const cur = norm(inp.value);
       let m = fillPool.filter(p => !taken.has(p.key) && p.key !== cur && (!q || p.f.includes(q)));
       if (q) m.sort((a, b) => (b.f.startsWith(q) - a.f.startsWith(q)) || (b.score - a.score));
-      m = m.slice(0, 6);
-      list.innerHTML = '';
-      m.forEach(p => {
-        const o = document.createElement('div');
-        o.className = 'ac-opt';
-        o.textContent = p.content;
-        o.addEventListener('pointerdown', e => {
-          e.preventDefault();
-          inp.value = p.content;
-          fillItems[i] = p.content;
-          rn.className = 'rank-n ok';
-          list.style.display = 'none';
-          focusNext();
-        });
-        list.appendChild(o);
-      });
-      list.style.display = m.length && document.activeElement === inp ? 'block' : 'none';
+      show(m.slice(0, 6), fillMedia && !m.length ? `Tape au moins 2 lettres pour chercher ${fillMedia === 'movie' ? 'un film' : 'une série'}` : '');
     };
     inp.addEventListener('input', () => {
-      fillItems[i] = inp.value;
-      rn.className = 'rank-n' + (inp.value.trim() ? ' ok' : '');
+      // Toute modification annule le choix TMDB : il faudra re-choisir dans la liste
+      fillItems[i] = { content: inp.value };
+      rn.className = 'rank-n' + (itemOk(fillItems[i]) ? ' ok' : '');
+      inp.classList.remove('invalid');
       refresh();
     });
     inp.addEventListener('focus', () => {
       refresh();
       setTimeout(() => row.scrollIntoView({ block: 'start', behavior: 'smooth' }), 250);
     });
-    inp.addEventListener('blur', () => setTimeout(() => { list.style.display = 'none'; }, 120));
+    inp.addEventListener('blur', () => setTimeout(() => { list.style.display = 'none'; markInvalid(); }, 150));
     inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); list.style.display = 'none'; focusNext(); } });
   }
+  if (fillMedia) box.insertAdjacentHTML('beforeend',
+    '<p class="tmdb-note">Données films et séries : <strong>TMDB</strong>. Ce produit utilise l\'API TMDB mais n\'est ni approuvé ni certifié par TMDB.</p>');
 }
 
 async function publishFill() {
   // On compacte : les cases vides sont ignorées, le rang suit l'ordre
-  const vals = fillItems.map(v => v.trim().replace(/\s+/g, ' ')).filter(Boolean);
+  const vals = fillItems
+    .map(v => ({ ...v, content: v.content.trim().replace(/\s+/g, ' ') }))
+    .filter(v => v.content);
   if (vals.length < 3) return toast('Remplis au moins 3 entrées !');
-  if (new Set(vals.map(norm)).size !== vals.length) return toast('Tu as mis deux fois la même réponse');
+  if (fillMedia && vals.some(v => !v.ext_id)) {
+    document.querySelectorAll('#fill-rows .ac-box .input').forEach((inp, i) => inp.classList.toggle('invalid', !!fillItems[i].content.trim() && !fillItems[i].ext_id));
+    return toast(`Choisis chaque ${ENTITY[fillMedia].one} dans la liste ${ENTITY[fillMedia].icon}`);
+  }
+  if (new Set(vals.map(fillKey)).size !== vals.length) return toast('Tu as mis deux fois la même réponse');
 
   const btn = $('fill-btn');
   btn.disabled = true;
@@ -1659,7 +1771,11 @@ async function publishFill() {
       const { error } = await sb.from('top_items').delete().eq('top_id', topId);
       if (error) throw error;
     }
-    const { error: itemsErr } = await sb.from('top_items').insert(vals.map((content, i) => ({ top_id: topId, rank: i + 1, content })));
+    const rows = vals.map((v, i) => ({
+      top_id: topId, rank: i + 1, content: v.content,
+      ...(hasMedia ? { ext_id: v.ext_id || null, year: v.year || null, poster: v.poster || null } : {}),
+    }));
+    const { error: itemsErr } = await sb.from('top_items').insert(rows);
     if (itemsErr) {
       if (isNew) await sb.from('tops').delete().eq('id', topId);
       throw itemsErr;
@@ -1710,6 +1826,7 @@ async function renderSuccess(topic, myVals, isNew) {
   const otherIds = new Set(others.map(a => a.id));
   const agg = aggregate(items, otherIds);
   const byKey = Object.fromEntries(agg.rows.map(r => [r.key, r]));
+  const itemKey = keyMaker(items);
   const total = others.length;
   if (!total) {
     $('sc-cmp-lbl').textContent = 'Toi vs la communauté';
@@ -1718,8 +1835,8 @@ async function renderSuccess(topic, myVals, isNew) {
   }
   $('sc-cmp-lbl').innerHTML = `Toi vs la communauté <span class="count-pill">${total} autre${total > 1 ? 's' : ''}</span>`;
   const stats = myVals.map((v, i) => {
-    const r = byKey[norm(v)] || { n: 0, top3: 0, first: 0 };
-    return { rk: i + 1, label: v, t5: r.n, t3: r.top3, t1: r.first, pct: Math.round(r.n / total * 100), tag: r.n ? '' : 'Unique !' };
+    const r = byKey[itemKey(v)] || { n: 0, top3: 0, first: 0 };
+    return { rk: i + 1, label: itemLabel(v), t5: r.n, t3: r.top3, t1: r.first, pct: Math.round(r.n / total * 100), tag: r.n ? '' : 'Unique !' };
   });
   const rarest = stats.reduce((a, b) => b.pct < a.pct ? b : a);
   $('sc-cmp').innerHTML = statTable(stats, total) +
@@ -1732,6 +1849,7 @@ async function renderSuccess(topic, myVals, isNew) {
 // ─────────────────────────────────────────
 let createStep = 1;
 let createCategory = null;
+let createType = null;   // 'movie' | 'tv' | null
 
 function startCreate() {
   createStep = 1;
@@ -1758,7 +1876,18 @@ function showCreateStep(step) {
   $('cs-prog').style.width = step === 1 ? '50%' : '100%';
   $('cs-next').textContent = step === 1 ? 'Suivant →' : 'Créer et remplir →';
   $('cs-next').disabled = false;
-  if (step === 2) setTimeout(() => $('top-title').focus(), 100);
+  if (step === 2) {
+    // Type de réponses proposé selon la catégorie (modifiable)
+    createType = !hasMedia ? null : createCategory === 'Cinéma' ? 'movie' : createCategory === 'Séries' ? 'tv' : null;
+    renderTypeChips();
+    setTimeout(() => $('top-title').focus(), 100);
+  }
+}
+
+function renderTypeChips() {
+  const opts = hasMedia ? [['movie', '🎬 Des films'], ['tv', '📺 Des séries'], [null, '✍️ Autre (texte libre)']] : [[null, '✍️ Texte libre']];
+  $('type-chips').innerHTML = opts.map(([v, l]) =>
+    `<div class="copt ${createType === v ? 'sel' : ''}" onclick="createType=${v ? `'${v}'` : 'null'};renderTypeChips()">${l}</div>`).join('');
 }
 
 function createBack() {
@@ -1799,8 +1928,8 @@ async function createNext() {
   btn.disabled = true;
   btn.textContent = 'Création…';
   const { data, error } = await sb.from('topics')
-    .insert({ title, category: createCategory, created_by: me.id })
-    .select('id,title,category,created_by,is_official,created_at').single();
+    .insert({ title, category: createCategory, created_by: me.id, ...(hasMedia ? { entity_type: createType } : {}) })
+    .select(TOPIC_COLS()).single();
   if (error) {
     btn.disabled = false;
     btn.textContent = 'Créer et remplir →';
