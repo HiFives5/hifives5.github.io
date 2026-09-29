@@ -611,11 +611,13 @@ textarea.input{resize:none;min-height:80px}
 <!-- ══════ AFFINITÉS ══════ -->
 <div id="page-affinities" class="page">
   <div class="screen-hdr"><div class="screen-title">Affinités</div></div>
-  <div class="scroll">
-    <div class="insight" style="margin-top:8px">
-      <div class="ins-tag">🔒 Bientôt disponible</div>
-      <div class="ins-text">« Les gens qui ont mis <strong style="color:var(--text)">Pulp Fiction</strong> dans leur top films ont aussi mis… » — le moteur de recommandations et de croisements arrive quand la base aura assez de vraies réponses.</div>
-    </div>
+  <div class="search-box">
+    <span style="font-size:15px;color:var(--t3)">🔎</span>
+    <input id="af-q" type="search" placeholder="Qui a aussi mis… (ex. Pulp Fiction)" oninput="afSearchSoon()">
+  </div>
+  <div class="scroll" style="padding-bottom:12px">
+    <div id="af-results"></div>
+    <div id="af-twins"></div>
   </div>
 </div>
 
@@ -747,6 +749,7 @@ let currentUserId = null;
 let currentAnswerId = null;
 let currentStat = 'filled';
 let hi5Tab = 'recus';
+let afSel = null;   // résultat de recherche ouvert dans Affinités
 let homeTab = 'foryou';
 let searchCat = 'Tous';
 let searchSort = 'popular';
@@ -970,6 +973,7 @@ const RENDERERS = {
   answer: () => renderAnswer(currentAnswerId),
   admin: () => renderAdmin(),
   stat: () => renderStat(currentStat),
+  affinities: () => renderAffinities(),
 };
 
 function showPage(name) {
@@ -1464,7 +1468,7 @@ async function getSuggestions() {
     return { t, score, why: top.why, cands };
   }).sort((a, b) => b.score - a.score);
 
-  suggCache = { list };
+  suggCache = { list, twins };
   return list;
 }
 
@@ -1628,6 +1632,106 @@ function hi5Row(l, kind, seen) {
       <div class="topic-meta">${timeAgo(l.created_at)} · ${fmtDate(l.created_at)}</div></div>
     <div style="font-size:20px">✋</div>
   </div>`;
+}
+
+// ─────────────────────────────────────────
+// AFFINITÉS : « qui a aussi mis X dans son top ? » + mes affinités
+// ─────────────────────────────────────────
+function renderAffinities() {
+  afSearch();
+  renderTwins();
+}
+
+// 👯 Les personnes avec qui j'ai le plus de réponses en commun (calcul partagé avec les suggestions)
+async function renderTwins() {
+  const box = $('af-twins');
+  if (!myTopicIds().size) {
+    box.innerHTML = '<div class="slbl">👯 Tes affinités</div><div class="hint" style="padding:0 20px">Remplis quelques tops pour découvrir les personnes qui ont les mêmes goûts que toi.</div>';
+    return;
+  }
+  if (!suggCache) box.innerHTML = '<div class="slbl">👯 Tes affinités</div>' + LOADER;
+  try { await getSuggestions(); } catch (e) { box.innerHTML = ''; return; }
+  const twins = suggCache.twins || [];
+  box.innerHTML = '<div class="slbl">👯 Tes affinités</div>' + (twins.length
+    ? twins.map(x => `<div class="hi5-row" style="cursor:pointer" onclick="openUser('${x.u}')">
+        <div class="cav" style="background:${colorFor(x.handle)}">${initialOf({ handle: x.handle })}</div>
+        <div class="hi5-txt"><span class="who">${esc(x.handle)}</span><div class="topic-meta">${x.n} réponses en commun avec toi</div></div>
+        <div style="font-size:16px;color:var(--t3)">›</div></div>`).join('')
+    : '<div class="hint" style="padding:0 20px">Pas encore assez de réponses communes (2 minimum) avec d\'autres personnes.</div>');
+}
+
+let afTimer = null;
+function afSearchSoon() { clearTimeout(afTimer); afSel = null; afTimer = setTimeout(afSearch, 300); }
+
+// Recherche d'une réponse dans tous les tops, regroupée par sujet
+let afGroups = [];
+async function afSearch() {
+  const box = $('af-results');
+  const q = $('af-q').value.trim();
+  $('af-twins').style.display = q ? 'none' : '';
+  if (q.length < 2) {
+    box.innerHTML = '<div class="insight" style="margin-top:4px"><div class="ins-tag">🔎 Qui a aussi mis…</div><div class="ins-text">Tape un film, un album, un club, une ville… et découvre combien de personnes l\'ont dans leur top, et à quelle place.</div></div>';
+    return;
+  }
+  box.innerHTML = LOADER;
+  const { data, error } = await sb.from('top_items')
+    .select(`top_id,${ITEM_COLS()},tops!inner(topic_id,user_id,profiles!tops_user_id_fkey(id,handle,is_demo))`)
+    .ilike('content', `%${q.replace(/[%_]/g, '')}%`)
+    .limit(1000);
+  if ($('af-q').value.trim() !== q) return;   // la saisie a changé entre-temps
+  if (error) { box.innerHTML = `<div class="empty">Erreur : ${esc(error.message)}</div>`; return; }
+  const rows = (data || []).filter(it => includeDemo || !it.tops.profiles?.is_demo);
+  const key = keyMaker(rows);
+  const groups = new Map();
+  rows.forEach(it => {
+    const k = it.tops.topic_id + '|' + key(it);
+    let g = groups.get(k);
+    if (!g) groups.set(k, g = { topicId: it.tops.topic_id, label: itemLabel(it), people: [] });
+    if (it.ext_id) g.label = itemLabel(it);
+    g.people.push({ top_id: it.top_id, rank: it.rank, user: it.tops.user_id, p: it.tops.profiles || {} });
+  });
+  afGroups = [...groups.values()].filter(g => topicById(g.topicId)).sort((a, b) => b.people.length - a.people.length);
+  renderAfResults();
+}
+
+function renderAfResults() {
+  const box = $('af-results');
+  if (!afGroups.length) { box.innerHTML = '<div class="empty"><div class="empty-ico">🔎</div>Personne n\'a encore mis ça dans un top.</div>'; return; }
+  if (afSel !== null && afGroups[afSel]) return renderAfDetail(afGroups[afSel]);
+  box.innerHTML = `<div class="slbl">${afGroups.length} résultat${afGroups.length > 1 ? 's' : ''}</div>` + afGroups.slice(0, 30).map((g, i) => {
+    const t = topicById(g.topicId);
+    const n = g.people.length;
+    const first = g.people.filter(x => x.rank === 1).length;
+    const meToo = g.people.some(x => x.user === me.id);
+    return `<div class="topic-row" onclick="afSel=${i};renderAfResults()">
+      <div class="topic-ico">${CAT_ICON[t.category] || '⭐'}</div>
+      <div style="flex:1;min-width:0">
+        <div class="topic-ttl">${esc(g.label)}</div>
+        <div class="topic-meta">${esc(t.title)}</div>
+        <div class="topic-why">${n} personne${n > 1 ? 's l\'ont dans leur top' : ' l\'a dans son top'}${first ? ` · ${first}× en n°1` : ''}${meToo ? ' · dont toi ✓' : ''}</div>
+      </div>
+      <div style="font-size:16px;color:var(--t3)">›</div></div>`;
+  }).join('');
+}
+
+function renderAfDetail(g) {
+  const t = topicById(g.topicId);
+  const unlocked = myTopicIds().has(g.topicId);   // même règle que le reste de l'appli : remplir d'abord
+  const people = [...g.people].sort((a, b) => a.rank - b.rank);
+  $('af-results').innerHTML = `
+    <div style="padding:4px 16px 0"><button class="act" onclick="afSel=null;renderAfResults()">← Tous les résultats</button></div>
+    <div class="block">
+      <div style="font-size:18px;font-weight:900;letter-spacing:-.3px">${esc(g.label)}</div>
+      <div class="topic-meta" style="margin-top:4px">${CAT_ICON[t.category] || ''} ${esc(t.title)} · ${people.length} personne${people.length > 1 ? 's' : ''}</div>
+    </div>
+    ${unlocked
+      ? people.map(x => `<div class="hi5-row" style="cursor:pointer" onclick="${x.user === me.id ? `openTopic('${t.id}')` : `openAnswer('${x.top_id}')`}">
+          <div class="rank ${x.rank === 1 ? 'r1' : ''}">${x.rank}</div>
+          <div class="hi5-txt">${x.user === me.id ? '<strong>Toi</strong>' : `<span class="who" onclick="event.stopPropagation();openUser('${x.p.id}')">${esc(x.p.handle || '?')}</span>`}
+            <div class="topic-meta">Classé n°${x.rank}</div></div>
+          <div style="font-size:16px;color:var(--t3)">›</div></div>`).join('')
+      : `<div class="insight" style="margin:4px 16px"><div class="ins-text">🔒 Remplis « ${esc(t.title)} » pour découvrir <strong style="color:var(--text)">qui</strong> l'a mis dans son top.</div></div>
+         <div style="padding:8px 16px"><button class="btn btn-primary" style="height:46px;font-size:14px" onclick="openFillById('${t.id}')">Faire mon top 5 →</button></div>`}`;
 }
 
 // ─────────────────────────────────────────
