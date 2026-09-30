@@ -185,6 +185,8 @@ textarea.input{resize:none;min-height:80px}
 .ac-opt.media small{margin-left:0}
 .ac-poster{width:30px;height:45px;object-fit:cover;border-radius:4px;flex-shrink:0;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:14px}
 .ac-info{padding:11px 14px;font-size:13px;color:var(--t3)}
+.kb-open #page-fill{padding-bottom:55vh}
+.ac-list.up{top:auto;bottom:48px}
 .ac-box .input.invalid{border-color:rgba(255,80,80,.6)}
 .tmdb-note{font-size:10px;color:var(--t3);margin-top:14px;line-height:1.5}
 
@@ -2230,9 +2232,19 @@ function renderFillRows() {
     });
     inp.addEventListener('focus', () => {
       refresh();
-      setTimeout(() => row.scrollIntoView({ block: 'start', behavior: 'smooth' }), 250);
+      document.body.classList.add('kb-open');   // marge basse : la case peut remonter au-dessus du clavier
+      // Les suggestions s'ouvrent vers le haut quand la case est dans le bas de l'écran (clavier)
+      const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+      list.classList.toggle('up', row.getBoundingClientRect().bottom + 200 > vh);
+      setTimeout(() => {
+        row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        list.classList.toggle('up', row.getBoundingClientRect().bottom + 200 > (window.visualViewport ? window.visualViewport.height : window.innerHeight));
+      }, 300);
     });
-    inp.addEventListener('blur', () => setTimeout(() => { list.style.display = 'none'; markInvalid(); }, 150));
+    inp.addEventListener('blur', () => setTimeout(() => {
+      list.style.display = 'none'; markInvalid();
+      if (!document.activeElement || !document.activeElement.closest || !document.activeElement.closest('#fill-rows')) document.body.classList.remove('kb-open');
+    }, 150));
     inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); list.style.display = 'none'; focusNext(); } });
   }
   if (fillMedia) box.insertAdjacentHTML('beforeend',
