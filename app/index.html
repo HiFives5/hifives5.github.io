@@ -875,9 +875,24 @@ async function tmdbSearch(type, q) {
 
 // Sujets « sport » avec suggestions Wikidata (mode souple : la saisie libre reste possible)
 const WIKI_TOPICS = [
+  // Football
   { title: /clubs? de foot/i, desc: /^(?!.*(féminin|esport|centre de formation|match|finale)).*((club|équipe).*foot|foot.*(club|équipe))/i },
   { title: /footballeurs?|gardiens? de but/i, desc: /footballeu|joueu.*foot|gardien.*(but|foot)|entraîneu.*foot/i },
   { title: /stades? de foot/i, desc: /stade|enceinte/i },
+  // Tennis, basket, rugby, cyclisme, golf, Formule 1, handball, natation, athlétisme
+  { title: /tennis/i, desc: /tennis(man|woman)|joueu.*tennis/i },
+  { title: /basketteurs?|NBA.*(joueurs?|basket)/i, desc: /basketteu|joueu.*basket/i },
+  { title: /équipes? de NBA/i, desc: /(franchise|équipe|club).*basket/i },
+  { title: /clubs? de rugby/i, desc: /^(?!.*(féminin|centre de formation|match|finale)).*(club|équipe).*rugby/i },
+  { title: /rugby/i, desc: /rugby(man|woman)|joueu.*rugby/i },
+  { title: /cyclistes?/i, desc: /cycliste|coureu.*cycli/i },
+  { title: /golfeu|golfeurs?/i, desc: /golfeu|joueu.*golf/i },
+  { title: /pilotes?.*(formule 1|F1)|formule 1/i, desc: /pilote.*(formule 1|F1|automobile|course)/i },
+  { title: /handball/i, desc: /handballeu|joueu.*handball/i },
+  { title: /nageu|nageurs?/i, desc: /nageu|natation/i },
+  { title: /athlètes?/i, desc: /athlète|sprinteu|coureu|lanceu|sauteu|décathlon|perchiste/i },
+  // Sportifs en général
+  { title: /sportifs français|sportives françaises/i, desc: /sportif|sportive|athlète|footballeu|joueu|nageu|cycliste|pilote|judoka|skieu|rugbyman|handballeu|basketteu|tennis(man|woman)/i },
 ];
 const wikiFor = topic => WIKI_TOPICS.find(w => w.title.test(topic.title)) || null;
 const wikiCache = new Map();
