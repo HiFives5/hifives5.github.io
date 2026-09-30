@@ -187,6 +187,17 @@ textarea.input{resize:none;min-height:80px}
 .ac-info{padding:11px 14px;font-size:13px;color:var(--t3)}
 .kb-open #page-fill{padding-bottom:55vh}
 .ac-list.up{top:auto;bottom:48px}
+.p-av.photo,.avatar.photo{background-size:cover!important;background-position:center;color:transparent!important}
+.p-bio{font-size:14px;color:var(--t2);line-height:1.45;margin-top:14px;white-space:pre-wrap;word-break:break-word}
+.p-links{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.p-link{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:999px;background:var(--card2);border:1px solid var(--border);color:var(--text);font-size:13px;font-weight:700;text-decoration:none}
+.ed-av-row{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+.ed-av-row .p-av{width:64px;height:64px}
+.ed-link{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.ed-link span{width:96px;font-size:13px;font-weight:700;color:var(--t2);flex-shrink:0}
+.ed-link .input{height:40px;padding:0 12px}
+.it-th{width:26px;height:26px;border-radius:7px;object-fit:cover;flex-shrink:0;background:var(--bg3)}
+.ac-poster.sq{height:30px;border-radius:6px}
 .ac-box .input.invalid{border-color:rgba(255,80,80,.6)}
 .tmdb-note{font-size:10px;color:var(--t3);margin-top:14px;line-height:1.5}
 
@@ -509,6 +520,8 @@ textarea.input{resize:none;min-height:80px}
         </div>
       </div>
     </div>
+    <div class="p-bio" id="p-bio" style="display:none"></div>
+    <div class="p-links" id="p-links"></div>
     <div class="p-stats">
       <div class="p-si link" onclick="openStat('filled')"><div class="p-sn" id="p-filled">0</div><div class="p-sl">Remplis</div></div>
       <div class="p-div"></div>
@@ -597,6 +610,8 @@ textarea.input{resize:none;min-height:80px}
           </div>
         </div>
       </div>
+      <div class="p-bio" id="up-bio" style="display:none"></div>
+      <div class="p-links" id="up-links"></div>
       <div class="p-stats">
         <div class="p-si"><div class="p-sn" id="up-filled">0</div><div class="p-sl">Remplis</div></div>
         <div class="p-div"></div>
@@ -679,6 +694,14 @@ textarea.input{resize:none;min-height:80px}
     <div class="mhandle"></div>
     <div style="font-size:17px;font-weight:900;margin-bottom:14px">Modifier mon profil</div>
     <div id="ed-msg" class="msg msg-err" style="display:none"></div>
+    <div class="ed-av-row">
+      <div class="p-av" id="ed-av">?</div>
+      <div>
+        <button class="btn btn-ghost" style="height:40px;font-size:13px;padding:0 14px" onclick="$('ed-photo').click()">📷 Changer la photo</button>
+        <button class="btn btn-ghost" id="ed-photo-rm" style="height:40px;font-size:13px;padding:0 14px;margin-left:6px" onclick="removeAvatar()">Retirer</button>
+      </div>
+      <input type="file" id="ed-photo" accept="image/*" style="display:none" onchange="pickAvatar(this)">
+    </div>
     <div class="mgroup">Prénom</div>
     <input id="ed-name" class="input" maxlength="40" style="margin-bottom:14px">
     <div class="mgroup">Pseudo</div>
@@ -690,6 +713,11 @@ textarea.input{resize:none;min-height:80px}
       <div style="flex:1"><div class="mgroup">Genre</div><select id="ed-gender" class="input"></select></div>
     </div>
     <p class="hint" style="margin-bottom:16px">Pays, âge et genre servent uniquement aux filtres et aux statistiques anonymes.</p>
+    <div class="mgroup">Petit mot <span id="ed-bio-n" style="color:var(--t3);font-weight:600"></span></div>
+    <textarea id="ed-bio" class="input" maxlength="160" rows="2" placeholder="Une phrase sur toi…" style="height:auto;padding:12px 14px;margin-bottom:14px;resize:none" oninput="$('ed-bio-n').textContent=this.value.length+'/160'"></textarea>
+    <div class="mgroup">Retrouve-moi sur</div>
+    <div id="ed-links" style="margin-bottom:6px"></div>
+    <p class="hint" style="margin-bottom:16px">Entre seulement ton identifiant (sans @ ni lien).</p>
     <div class="row">
       <button class="btn btn-ghost" style="flex:1" onclick="closeEditProfile()">Annuler</button>
       <button class="btn btn-primary" style="flex:1" id="ed-save" onclick="saveProfile()">Enregistrer</button>
@@ -896,6 +924,24 @@ const WIKI_TOPICS = [
 ];
 const wikiFor = topic => WIKI_TOPICS.find(w => w.title.test(topic.title)) || null;
 const wikiCache = new Map();
+const COMMONS = 'https://commons.wikimedia.org/wiki/Special:FilePath/';
+const commonsImg = f => COMMONS + encodeURIComponent(f) + '?width=96';
+// Image de l'entité : logo (P154) pour un club, sinon image principale (P18). null si aucune.
+async function wikiImage(id) {
+  try {
+    const res = await fetch('https://www.wikidata.org/w/api.php?action=wbgetentities&props=claims&format=json&origin=*&ids=' + encodeURIComponent(id));
+    const c = ((await res.json()).entities || {})[id]?.claims || {};
+    const f = (c.P154 || c.P18 || [])[0]?.mainsnak?.datavalue?.value;
+    return typeof f === 'string' && f.length <= 180 ? f : null;
+  } catch (e) { return null; }
+}
+// Vignette d'une réponse (affiche TMDB ou image Wikidata) ; vide s'il n'y en a pas
+function thumb(it) {
+  if (!it.poster || !it.ext_id) return '';
+  if (it.ext_id.startsWith('tmdb:') && it.poster.startsWith('/')) return `<img class="it-th" src="${TMDB_IMG + it.poster}" alt="" loading="lazy">`;
+  if (/^wd:Q\d+$/.test(it.ext_id) && !it.poster.startsWith('/')) return `<img class="it-th" src="${esc(commonsImg(it.poster))}" alt="" loading="lazy">`;
+  return '';
+}
 async function wikiSearch(cfg, q) {
   const key = cfg.desc + '|' + q;
   if (wikiCache.has(key)) return wikiCache.get(key);
@@ -905,7 +951,7 @@ async function wikiSearch(cfg, q) {
   if (!res.ok) throw new Error('Wikidata ' + res.status);
   const j = await res.json();
   const seen = new Set();
-  const out = (j.search || []).filter(r => r.label && cfg.desc.test(r.description || '')).map(r => ({ content: r.label, key: norm(r.label), f: fold(r.label), wiki: true }))
+  const out = (j.search || []).filter(r => r.label && cfg.desc.test(r.description || '')).map(r => ({ content: r.label, key: norm(r.label), f: fold(r.label), wiki: true, wid: r.id }))
     .filter(r => !seen.has(r.key) && seen.add(r.key));
   wikiCache.set(key, out);
   return out;
@@ -1188,7 +1234,7 @@ function topicRow(t, counts, mine, why) {
 
 function renderHome() {
   updateHi5Badge();
-  $('home-av').textContent = initialOf(profile);
+  setAvatar($('home-av'), profile);
   setHomeTab(homeTab);
   const counts = countByTopic();
   const mine = myTopicIds();
@@ -1276,7 +1322,7 @@ function topCard(t, withTopic) {
     </div>
     ${withTopic ? `<div class="ctitle" onclick="openTopic('${t.topic_id}')">${esc(topic.title)} <span style="font-size:12px;color:var(--t3)">›</span></div>` : ''}
     <ul class="clist">
-      ${items.map((it, i) => `<li><div class="rank ${i === 0 ? 'r1' : ''}">${it.rank}</div>${esc(itemLabel(it))}</li>`).join('')}
+      ${items.map((it, i) => `<li><div class="rank ${i === 0 ? 'r1' : ''}">${it.rank}</div>${thumb(it)}${esc(itemLabel(it))}</li>`).join('')}
     </ul>
     <div class="ca">
       <button class="act ${liked ? 'liked' : ''}" data-n="${likes.length}" data-h="${esc(p.handle)}" title="High five !" onclick="toggleLike('${t.id}',this)">✋ ${likes.length}</button>
@@ -1580,7 +1626,7 @@ async function renderTopic(id) {
     const myItems = items.filter(it => it.top_id === mineAns.id).sort((a, b) => a.rank - b.rank);
     myItems.forEach(it => myKeys.add(itemKey(it)));
     $('tp-mine').innerHTML = `<div class="block"><div class="block-lbl">Mon top 5 <span class="count-pill" id="tp-mine-likes">✋ …</span></div><div class="hi5-from" id="tp-mine-from"></div>
-      <ul class="clist" style="padding:0">${myItems.map(it => `<li><div class="rank ${it.rank === 1 ? 'r1' : ''}">${it.rank}</div>${esc(itemLabel(it))}</li>`).join('')}</ul></div>`;
+      <ul class="clist" style="padding:0">${myItems.map(it => `<li><div class="rank ${it.rank === 1 ? 'r1' : ''}">${it.rank}</div>${thumb(it)}${esc(itemLabel(it))}</li>`).join('')}</ul></div>`;
     sb.from('likes').select('created_at,profiles!likes_user_id_fkey(id,handle)').eq('top_id', mineAns.id).order('created_at', { ascending: false })
       .then(({ data }) => {
         const list = data || [];
@@ -2084,7 +2130,7 @@ async function renderAnswer(topId) {
   const liked = likes.some(l => l.user_id === me.id);
   const list = (items, hlKeys) => `<ul class="clist" style="padding:0">${items.map(it => {
     const hl = hlKeys.has(itemKey(it));
-    return `<li><div class="rank ${it.rank === 1 ? 'r1' : ''}">${it.rank}</div><span style="flex:1;${hl ? 'color:var(--orange)' : ''}">${esc(itemLabel(it))}</span>${hl ? '<span class="st-tag" style="color:var(--orange);background:var(--og)">en commun</span>' : ''}</li>`;
+    return `<li><div class="rank ${it.rank === 1 ? 'r1' : ''}">${it.rank}</div>${thumb(it)}<span style="flex:1;${hl ? 'color:var(--orange)' : ''}">${esc(itemLabel(it))}</span>${hl ? '<span class="st-tag" style="color:var(--orange);background:var(--og)">en commun</span>' : ''}</li>`;
   }).join('')}</ul>`;
 
   $('an-body').innerHTML = `
@@ -2211,6 +2257,11 @@ function renderFillRows() {
     const markInvalid = () => inp.classList.toggle('invalid', !!fillMedia && !!inp.value.trim() && !fillItems[i].ext_id);
     const choose = p => {
       fillItems[i] = { content: p.content, ext_id: p.ext_id || null, year: p.year || null, poster: p.poster || null };
+      if (p.wiki && has008()) {
+        // Choix Wikidata : on garde l'identifiant, puis on va chercher l'image en arrière-plan
+        const me_ = fillItems[i] = { content: p.content, ext_id: 'wd:' + p.wid, year: null, poster: null };
+        wikiImage(p.wid).then(f => { if (f && fillItems[i] === me_) me_.poster = f; });
+      }
       inp.value = p.ext_id ? itemLabel(p) : p.content;
       rn.className = 'rank-n ok';
       inp.classList.remove('invalid');
@@ -2504,11 +2555,45 @@ async function createNext() {
 // ─────────────────────────────────────────
 // PROFILS
 // ─────────────────────────────────────────
+// Photo de profil et liens : on ne fait confiance à rien de ce qui vient de la base (reconstruction + validation)
+const NETWORKS = {
+  instagram: { label: 'Instagram', icon: '📸', url: h => `https://www.instagram.com/${h}/` },
+  strava:    { label: 'Strava',    icon: '🏃', url: h => `https://www.strava.com/athletes/${h}`, re: /^\d{1,12}$/, hint: 'n° d\'athlète' },
+  linkedin:  { label: 'LinkedIn',  icon: '💼', url: h => `https://www.linkedin.com/in/${h}/` },
+  chesscom:  { label: 'Chess.com', icon: '♟️', url: h => `https://www.chess.com/member/${h}` },
+  x:         { label: 'X',         icon: '🐦', url: h => `https://x.com/${h}` },
+  tiktok:    { label: 'TikTok',    icon: '🎵', url: h => `https://www.tiktok.com/@${h}` },
+  youtube:   { label: 'YouTube',   icon: '▶️', url: h => `https://www.youtube.com/@${h}` },
+  twitch:    { label: 'Twitch',    icon: '🎮', url: h => `https://www.twitch.tv/${h}` },
+};
+const LINK_RE = /^[A-Za-z0-9_.\-]{1,40}$/;
+const linkOk = (k, v) => NETWORKS[k] && typeof v === 'string' && (NETWORKS[k].re || LINK_RE).test(v);
+const avatarOk = u => typeof u === 'string' && u.startsWith(SUPABASE_URL + '/storage/v1/object/public/avatars/') && !/["'()\\\s]/.test(u);
+function setAvatar(el, p) {
+  if (avatarOk(p.avatar_url)) {
+    el.classList.add('photo');
+    el.style.backgroundImage = `url("${p.avatar_url}")`;
+    el.textContent = '';
+  } else {
+    el.classList.remove('photo');
+    el.style.backgroundImage = '';
+    el.textContent = initialOf(p);
+  }
+}
+function linksHtml(links) {
+  return Object.entries(links || {}).filter(([k, v]) => linkOk(k, v))
+    .map(([k, v]) => `<a class="p-link" href="${NETWORKS[k].url(v)}" target="_blank" rel="noopener noreferrer">${NETWORKS[k].icon} ${NETWORKS[k].label}</a>`).join('');
+}
+
 function fillProfileHeader(prefix, p) {
   const pts = p.points ?? 0;
   const lvl = levelOf(pts);
-  $(prefix + 'av').textContent = initialOf(p);
   $(prefix + 'av').style.background = colorFor(p.handle);
+  setAvatar($(prefix + 'av'), p);
+  const bio = $(prefix + 'bio');
+  bio.textContent = p.bio || '';
+  bio.style.display = p.bio ? '' : 'none';
+  $(prefix + 'links').innerHTML = linksHtml(p.links);
   $(prefix + 'name').textContent = p.name || '';
   $(prefix + 'country').textContent = p.country || '🌍';
   $(prefix + 'filled').textContent = p.tops_filled ?? 0;
@@ -2571,7 +2656,48 @@ function openEditProfile() {
   $('ed-year').value = profile.birth_year || '';
   $('ed-gender').value = profile.gender || '';
   $('ed-msg').style.display = 'none';
+  $('ed-bio').value = profile.bio || '';
+  $('ed-bio-n').textContent = ($('ed-bio').value.length) + '/160';
+  pendingAvatar = avatarOk(profile.avatar_url) ? profile.avatar_url : null;
+  $('ed-av').style.background = colorFor(profile.handle);
+  setAvatar($('ed-av'), { ...profile, avatar_url: pendingAvatar });
+  $('ed-photo-rm').style.display = pendingAvatar ? '' : 'none';
+  $('ed-links').innerHTML = Object.entries(NETWORKS).map(([k, n]) =>
+    `<div class="ed-link"><span>${n.icon} ${n.label}</span><input class="input" data-net="${k}" maxlength="40" autocapitalize="off" autocomplete="off" placeholder="${n.hint || 'identifiant'}" value="${esc((profile.links || {})[k] || '')}"></div>`).join('');
   $('edit-modal').classList.add('open');
+}
+// Migration 008 exécutée ? (les colonnes du profil sont alors présentes)
+const has008 = () => !!profile && 'links' in profile;
+let pendingAvatar = null;   // URL de la photo à enregistrer (null = aucune)
+// Recadrage carré + réduction à 256 px dans le navigateur, puis envoi dans le bucket « avatars »
+async function pickAvatar(input) {
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file) return;
+  const err = m => { $('ed-msg').textContent = m; $('ed-msg').style.display = ''; };
+  try {
+    const bmp = await createImageBitmap(file);
+    const side = Math.min(bmp.width, bmp.height), size = 256;
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = size;
+    cv.getContext('2d').drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, size, size);
+    const blob = await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.85));
+    if (!blob) throw new Error('image');
+    const path = `${me.id}/avatar.jpg`;
+    const { error } = await sb.storage.from('avatars').upload(path, blob, { upsert: true, contentType: 'image/jpeg' });
+    if (error) throw error;
+    pendingAvatar = sb.storage.from('avatars').getPublicUrl(path).data.publicUrl + '?v=' + Date.now();
+    setAvatar($('ed-av'), { ...profile, avatar_url: pendingAvatar });
+    $('ed-photo-rm').style.display = '';
+    $('ed-msg').style.display = 'none';
+  } catch (e) {
+    err('Photo impossible à envoyer. Essaie une autre image' + (e && e.message ? ' (' + e.message + ')' : '') + '.');
+  }
+}
+function removeAvatar() {
+  pendingAvatar = null;
+  setAvatar($('ed-av'), { ...profile, avatar_url: null });
+  $('ed-photo-rm').style.display = 'none';
 }
 function closeEditProfile() { $('edit-modal').classList.remove('open'); }
 
@@ -2581,9 +2707,17 @@ async function saveProfile() {
   const handle = $('ed-handle').value.trim().replace(/^@/, '');
   if (!name) return err('Le prénom est obligatoire');
   if (!/^[A-Za-z0-9_.]{2,20}$/.test(handle)) return err('Pseudo : 2 à 20 caractères, lettres, chiffres, _ ou .');
+  const links = {};
+  for (const inp of document.querySelectorAll('#ed-links input')) {
+    const k = inp.dataset.net, v = inp.value.trim().replace(/^@/, '');
+    if (!v) continue;
+    if (!linkOk(k, v)) return err(`${NETWORKS[k].label} : entre seulement ton identifiant${NETWORKS[k].hint ? ' (' + NETWORKS[k].hint + ')' : ''}, sans lien ni espace`);
+    links[k] = v;
+  }
   const btn = $('ed-save');
   btn.disabled = true;
   const { error } = await sb.from('profiles').update({
+    ...(has008() ? { bio: $('ed-bio').value.trim() || null, links, avatar_url: pendingAvatar } : {}),
     name,
     handle: '@' + handle,
     country: $('ed-country').value || null,
@@ -2595,7 +2729,7 @@ async function saveProfile() {
   closeEditProfile();
   toast('Profil enregistré ✓');
   await loadData();          // tes réponses sont maintenant rattachées à ton pays / âge / genre
-  $('home-av').textContent = initialOf(profile);
+  setAvatar($('home-av'), profile);
   renderProfile();
 }
 
