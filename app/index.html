@@ -873,6 +873,29 @@ async function tmdbSearch(type, q) {
   }));
 }
 
+// Sujets « sport » avec suggestions Wikidata (mode souple : la saisie libre reste possible)
+const WIKI_TOPICS = [
+  { title: /clubs? de foot/i, desc: /^(?!.*(féminin|esport|centre de formation|match|finale)).*((club|équipe).*foot|foot.*(club|équipe))/i },
+  { title: /footballeurs?|gardiens? de but/i, desc: /footballeu|joueu.*foot|gardien.*(but|foot)|entraîneu.*foot/i },
+  { title: /stades? de foot/i, desc: /stade|enceinte/i },
+];
+const wikiFor = topic => WIKI_TOPICS.find(w => w.title.test(topic.title)) || null;
+const wikiCache = new Map();
+async function wikiSearch(cfg, q) {
+  const key = cfg.desc + '|' + q;
+  if (wikiCache.has(key)) return wikiCache.get(key);
+  const url = 'https://www.wikidata.org/w/api.php?action=wbsearchentities&type=item&limit=20&format=json&origin=*&language=fr&uselang=fr&search='
+    + encodeURIComponent(q);
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Wikidata ' + res.status);
+  const j = await res.json();
+  const seen = new Set();
+  const out = (j.search || []).filter(r => r.label && cfg.desc.test(r.description || '')).map(r => ({ content: r.label, key: norm(r.label), f: fold(r.label), wiki: true }))
+    .filter(r => !seen.has(r.key) && seen.add(r.key));
+  wikiCache.set(key, out);
+  return out;
+}
+
 // Les données sont chargées à l'ouverture ; on les rafraîchit si elles ont plus d'une minute
 // (la session reste ouverte des jours : sinon on ne voit pas les nouveaux sujets des autres)
 let lastLoad = 0;
@@ -2077,6 +2100,7 @@ let fillTopic = null;
 let fillExisting = null;   // ma réponse existante (modification)
 let fillItems = [];        // 5 × { content, ext_id?, year?, poster? }
 let fillPool = [];
+let fillWiki = null;       // config Wikidata du sujet (football…), ou null
 let fillMedia = null;      // 'movie' | 'tv' si le sujet est relié à TMDB
 
 const emptyItem = () => ({ content: '' });
@@ -2091,6 +2115,7 @@ async function openFill(topic, replace) {
   fillTopic = topic;
   fillExisting = myAnswer(topic.id) || null;
   fillMedia = isMedia(topic) ? topic.entity_type : null;
+  fillWiki = fillMedia ? null : wikiFor(topic);
   fillItems = Array.from({ length: 5 }, emptyItem);
   fillPool = [];
   $('fill-cat').textContent = (CAT_ICON[topic.category] || '') + ' ' + topic.category;
@@ -2221,7 +2246,21 @@ function renderFillRows() {
       const cur = norm(inp.value);
       let m = fillPool.filter(p => !taken.has(p.key) && p.key !== cur && (!q || p.f.includes(q)));
       if (q) m.sort((a, b) => (b.f.startsWith(q) - a.f.startsWith(q)) || (b.score - a.score));
-      show(m.slice(0, 6), fillMedia && !m.length ? `Tape au moins 2 lettres pour chercher ${fillMedia === 'movie' ? 'un film' : 'une série'}` : '');
+      const local = m.slice(0, 6);
+      show(local, fillMedia && !m.length ? `Tape au moins 2 lettres pour chercher ${fillMedia === 'movie' ? 'un film' : 'une série'}` : '');
+      if (fillWiki && q.length >= 3) {
+        // Suggestions Wikidata en complément (orthographe officielle) ; en cas d'échec, on garde la liste locale
+        clearTimeout(timer);
+        const my = ++seq;
+        timer = setTimeout(async () => {
+          let res;
+          try { res = await wikiSearch(fillWiki, inp.value.trim()); } catch (e) { return; }
+          if (my !== seq || fold(inp.value) !== q) return;
+          const have = new Set(local.map(p => p.key));
+          const extra = res.filter(r => !taken.has(r.key) && r.key !== cur && !have.has(r.key));
+          show([...local, ...extra].slice(0, 8));
+        }, 350);
+      }
     };
     inp.addEventListener('input', () => {
       // Toute modification annule le choix TMDB : il faudra re-choisir dans la liste
