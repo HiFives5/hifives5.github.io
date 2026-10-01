@@ -136,6 +136,8 @@ textarea.input{resize:none;min-height:80px}
 .topic-meta{font-size:11px;color:var(--t3);margin-top:3px;font-weight:600}
 .tops-list .topic-row.more{display:none}
 .tops-list.open .topic-row.more{display:flex}
+.tops-list .fb-card.more{display:none}
+.tops-list.open .fb-card.more{display:block}
 .more-btn{display:block;margin:2px 16px 8px;width:calc(100% - 32px);padding:10px;border-radius:var(--rsm);border:1px dashed var(--b2);background:transparent;color:var(--t2);font-size:13px;font-weight:700;cursor:pointer}
 .topic-why{font-size:11px;color:var(--purple);margin-top:5px;font-weight:600;line-height:1.35}
 .topic-why b{color:var(--text)}
@@ -2023,12 +2025,16 @@ async function renderMyFeedback() {
   $('p-admin').innerHTML = html;
   html = '';
   if (data.length) {
-    html += '<div class="slbl">Mes retours</div>' + data.map(f => `
-      <div class="fb-card">
+    // Les 3 derniers retours ; un bouton déroule la suite (comme « Mes tops »)
+    const extra = data.length - 3;
+    html += '<div class="slbl">Mes retours</div><div class="tops-list">' + data.map((f, i) => `
+      <div class="fb-card${i >= 3 ? ' more' : ''}">
         <div class="fb-head"><span>${FB_KINDS[f.kind]}</span><span>· ${timeAgo(f.created_at)}</span><span class="badge-pill" style="margin-left:auto">${FB_STATUS[f.status]}</span></div>
         <div class="fb-msg">${esc(f.message)}</div>
         ${f.reply ? `<div class="fb-reply"><strong>Réponse de HiFives :</strong> ${esc(f.reply)}</div>` : ''}
-      </div>`).join('');
+      </div>`).join('')
+      + (extra > 0 ? `<button class="more-btn" data-more="Voir ${extra === 1 ? 'l\'autre retour' : `les ${extra} autres retours`} ▾" onclick="toggleMoreTops(this)">Voir ${extra === 1 ? 'l\'autre retour' : `les ${extra} autres retours`} ▾</button>` : '')
+      + '</div>';
   }
   $('p-feedback').innerHTML = html;
 }
