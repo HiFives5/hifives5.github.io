@@ -1519,7 +1519,7 @@ async function getSuggestions() {
     if (tw.length) {
       // part (pondérée par le nombre de réponses communes) de mes affinités qui ont rempli ce sujet
       cands.push({ kind: 'twin', s: 3 * tw.reduce((sum, x) => sum + x.n, 0) / twinWeight,
-        why: `👯 <b>${esc(tw[0].handle)}</b>, qui a ${tw[0].n} réponses en commun avec toi, l'a rempli`
+        why: `👯 <b style="color:var(--orange);cursor:pointer" onclick="event.stopPropagation();openUser('${tw[0].u}')">${esc(tw[0].handle)}</b>, qui a ${tw[0].n} réponses en commun avec toi, l'a rempli`
           + (tw.length > 1 ? ` (et ${tw.length - 1} autre${tw.length > 2 ? 's' : ''} de tes affinités)` : '') });
     }
 
