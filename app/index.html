@@ -134,6 +134,9 @@ textarea.input{resize:none;min-height:80px}
 .topic-ico{width:40px;height:40px;border-radius:12px;background:var(--og);display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0}
 .topic-ttl{font-size:14px;font-weight:800;line-height:1.3}
 .topic-meta{font-size:11px;color:var(--t3);margin-top:3px;font-weight:600}
+.tops-list .topic-row.more{display:none}
+.tops-list.open .topic-row.more{display:flex}
+.more-btn{display:block;margin:2px 16px 8px;width:calc(100% - 32px);padding:10px;border-radius:var(--rsm);border:1px dashed var(--b2);background:transparent;color:var(--t2);font-size:13px;font-weight:700;cursor:pointer}
 .topic-why{font-size:11px;color:var(--purple);margin-top:5px;font-weight:600;line-height:1.35}
 .topic-why b{color:var(--text)}
 .done-badge{font-size:10px;font-weight:800;color:var(--green);background:var(--gd);padding:4px 8px;border-radius:7px;flex-shrink:0}
@@ -2615,13 +2618,23 @@ function myTopRows(userId, likes = {}) {
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
     .map(a => ({ a, t: topicById(a.topic_id) })).filter(x => x.t);
   if (!list.length) return '<div class="empty"><div class="empty-ico">✋</div>Aucun top pour l\'instant</div>';
-  // Mes tops → page du sujet ; ceux d'un autre → sa réponse
-  return list.map(({ a, t }) => `
-    <div class="topic-row" onclick="${userId === me.id ? `openTopic('${t.id}')` : `openAnswer('${a.id}')`}">
+  // Mes tops → page du sujet ; ceux d'un autre → sa réponse.
+  // Seuls les 3 derniers sont visibles ; un bouton déroule la suite.
+  const SHOWN = 3;
+  const extra = list.length - SHOWN;
+  return `<div class="tops-list">` + list.map(({ a, t }, i) => `
+    <div class="topic-row${i >= SHOWN ? ' more' : ''}" onclick="${userId === me.id ? `openTopic('${t.id}')` : `openAnswer('${a.id}')`}">
       <div class="topic-ico">${CAT_ICON[t.category] || '⭐'}</div>
       <div style="flex:1;min-width:0"><div class="topic-ttl">${esc(t.title)}</div><div class="topic-meta">${esc(t.category)} · ${timeAgo(a.created_at)}</div></div>
       <div style="font-size:12px;font-weight:800;flex-shrink:0;color:${likes[a.id] ? 'var(--orange)' : 'var(--t3)'}">✋ ${likes[a.id] || 0}</div>
-    </div>`).join('');
+    </div>`).join('')
+    + (extra > 0 ? `<button class="more-btn" data-more="Voir ${extra === 1 ? 'l\'autre top' : `les ${extra} autres tops`} ▾" onclick="toggleMoreTops(this)">Voir ${extra === 1 ? 'l\'autre top' : `les ${extra} autres tops`} ▾</button>` : '')
+    + '</div>';
+}
+
+function toggleMoreTops(btn) {
+  const open = btn.parentElement.classList.toggle('open');
+  btn.textContent = open ? 'Réduire ▴' : btn.dataset.more;
 }
 
 const sumLikes = likes => Object.values(likes).reduce((s, n) => s + n, 0);
