@@ -759,7 +759,14 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 // Clé TMDB (themoviedb.org) : clé API v3 ou jeton de lecture v4. Vide = saisie libre pour tous les sujets.
 const TMDB_KEY = '91d511c5cb1d64d71eb1ac43836184e3';
 const TMDB_IMG = 'https://image.tmdb.org/t/p/w92';
-const ENTITY = { movie: { icon: '🎬', label: 'Films', one: 'film' }, tv: { icon: '📺', label: 'Séries', one: 'série' } };
+// Types de réponses « officielles » (choix obligatoire dans une base de référence)
+const ENTITY = {
+  movie:  { icon: '🎬', label: 'Films',     one: 'film',    the: 'le film',     ph: 'Titre du film',       a: 'un film',     src: 'tmdb' },
+  tv:     { icon: '📺', label: 'Séries',    one: 'série',   the: 'la série',    ph: 'Titre de la série',   a: 'une série',   src: 'tmdb' },
+  artist: { icon: '🎤', label: 'Artistes',  one: 'artiste', the: "l'artiste",   ph: "Nom de l'artiste",    a: 'un artiste',  src: 'mb' },
+  album:  { icon: '💿', label: 'Albums',    one: 'album',   the: "l'album",     ph: "Titre de l'album",    a: 'un album',    src: 'mb' },
+  track:  { icon: '🎵', label: 'Chansons',  one: 'chanson', the: 'la chanson',  ph: 'Titre de la chanson', a: 'une chanson', src: 'mb' },
+};
 
 const CATEGORIES = [
   { k: 'Cinéma', i: '🎬' }, { k: 'Musique', i: '🎵' }, { k: 'Voyages', i: '✈️' }, { k: 'Sport', i: '⚽' },
@@ -891,7 +898,7 @@ let hasMedia = null;
 const TOPIC_COLS = () => 'id,title,category,created_by,is_official,created_at' + (hasMedia ? ',entity_type' : '');
 const ITEM_COLS  = () => 'rank,content' + (hasMedia ? ',ext_id,year,poster' : '');
 // Sujet relié à TMDB (films ou séries) : choix obligatoire dans la liste
-const isMedia = topic => !!(TMDB_KEY && hasMedia && topic && ENTITY[topic.entity_type]);
+const isMedia = topic => !!(hasMedia && topic && ENTITY[topic.entity_type] && (ENTITY[topic.entity_type].src !== 'tmdb' || TMDB_KEY));
 
 // Libellé d'une réponse : « Pulp Fiction (1994) » pour un film TMDB
 const itemLabel = it => it.content + (it.year ? ` (${it.year})` : '');
@@ -899,8 +906,14 @@ const itemLabel = it => it.content + (it.year ? ` (${it.year})` : '');
 // à la main (anciennes réponses, démo) est rapprochée du film TMDB de même titre.
 function keyMaker(items) {
   const alias = {};
-  items.forEach(it => { if (it.ext_id) alias[norm(it.content)] = it.ext_id; });
-  return it => it.ext_id || alias[norm(it.content)] || norm(it.content);
+  items.forEach(it => { if (it.ext_id) alias[norm(it.content)] = idKey(it); });
+  return it => idKey(it) || alias[norm(it.content)] || norm(it.content);
+}
+// Identifiant d'une réponse officielle. Une chanson existe en plusieurs enregistrements dans
+// MusicBrainz (album, live, single…) : on l'identifie par son libellé officiel « Titre — Artiste ».
+function idKey(it) {
+  if (!it.ext_id) return '';
+  return it.ext_id.startsWith('mb:track:') ? 'mbt:' + norm(it.content) : it.ext_id;
 }
 
 async function tmdbSearch(type, q) {
@@ -918,6 +931,48 @@ async function tmdbSearch(type, q) {
     poster: r.poster_path || null,
   }));
 }
+
+// MusicBrainz (base musicale ouverte, CC0) : artistes, albums, chansons. 1 requête/s max par IP.
+const mbCache = new Map();
+const luceneEsc = q => q.replace(/([+\-!(){}\[\]^"~*?:\\\/]|&&|\|\|)/g, '\\$1');
+const mbArtist = credit => (credit || []).map(c => c.name + (c.joinphrase || '')).join('').trim();
+async function mbSearch(type, q) {
+  const key = type + '|' + fold(q);
+  if (mbCache.has(key)) return mbCache.get(key);
+  const term = luceneEsc(q.trim());
+  const path = type === 'artist' ? `artist/?query=artist:(${term})`
+    : type === 'album' ? `release-group/?query=releasegroup:(${term}) AND primarytype:album`
+    : `recording/?query=recording:(${term}) AND video:false`;
+  const res = await fetch(`https://musicbrainz.org/ws/2/${path}&fmt=json&limit=${type === 'track' ? 25 : 10}`);
+  if (!res.ok) throw new Error('MusicBrainz ' + res.status);
+  const j = await res.json();
+  const seen = new Set();
+  let out;
+  if (type === 'artist') {
+    out = (j.artists || []).map(a => ({ content: a.name, orig: [a.disambiguation, a.country].filter(Boolean).join(' · '), ext_id: 'mb:artist:' + a.id, year: null, poster: null }));
+  } else if (type === 'album') {
+    out = (j['release-groups'] || []).map(r => ({
+      content: `${r.title} — ${mbArtist(r['artist-credit'])}`, ext_id: 'mb:album:' + r.id,
+      year: parseInt((r['first-release-date'] || '').slice(0, 4), 10) || null, poster: 'caa',
+    }));
+  } else {
+    out = (j.recordings || []).map(r => ({
+      content: `${r.title} — ${mbArtist(r['artist-credit'])}`, ext_id: 'mb:track:' + r.id,
+      year: parseInt((r['first-release-date'] || '').slice(0, 4), 10) || null, poster: null,
+    }));
+  }
+  // Un même titre peut revenir plusieurs fois (versions, homonymes) : on garde la première occurrence
+  out = out.filter(r => { const k = idKey(r) || r.ext_id; return !seen.has(k) && seen.add(k); }).slice(0, 7);
+  mbCache.set(key, out);
+  return out;
+}
+const caaImg = it => `https://coverartarchive.org/release-group/${it.ext_id.split(':')[2]}/front-250`;
+// Recherche selon la source du type de réponse
+const mediaSearch = (type, q) => ENTITY[type].src === 'tmdb' ? tmdbSearch(type, q) : mbSearch(type, q);
+// Image d'une option de recherche (affiche TMDB, pochette d'album) ; sinon l'icône du type
+const mediaImg = (p, type) => p.poster && p.ext_id?.startsWith('tmdb:') ? `<img class="ac-poster" src="${TMDB_IMG + p.poster}" alt="" loading="lazy">`
+  : p.poster === 'caa' ? `<img class="ac-poster" src="${caaImg(p)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=&quot;ac-poster&quot;>💿</div>'">`
+  : `<div class="ac-poster">${ENTITY[type].icon}</div>`;
 
 // Sujets « sport » avec suggestions Wikidata (mode souple : la saisie libre reste possible)
 const WIKI_TOPICS = [
@@ -957,6 +1012,7 @@ async function wikiImage(id) {
 function thumb(it) {
   if (!it.poster || !it.ext_id) return '';
   if (it.ext_id.startsWith('tmdb:') && it.poster.startsWith('/')) return `<img class="it-th" src="${TMDB_IMG + it.poster}" alt="" loading="lazy">`;
+  if (it.ext_id.startsWith('mb:album:') && it.poster === 'caa') return `<img class="it-th" src="${caaImg(it)}" alt="" loading="lazy" onerror="this.remove()">`;
   if (/^wd:Q\d+$/.test(it.ext_id) && !it.poster.startsWith('/')) return `<img class="it-th" src="${esc(commonsImg(it.poster))}" alt="" loading="lazy">`;
   return '';
 }
@@ -2268,7 +2324,7 @@ let fillWiki = null;       // config Wikidata du sujet (football…), ou null
 let fillMedia = null;      // 'movie' | 'tv' si le sujet est relié à TMDB
 
 const emptyItem = () => ({ content: '' });
-const fillKey = it => it.ext_id || norm(it.content);
+const fillKey = it => idKey(it) || norm(it.content);
 
 async function openFillById(id) {
   const t = await ensureTopic(id);
@@ -2291,7 +2347,7 @@ async function openFill(topic, replace) {
     <div class="ins-text">${others
       ? `🔒 <strong style="color:var(--text)">${others} personne${others > 1 ? 's ont' : ' a'} déjà répondu.</strong> Découvre leur classement et compare-toi après avoir publié.`
       : `✨ <strong style="color:var(--text)">Personne n'a encore répondu.</strong> Ton top sera la référence !`}</div></div>`)
-    + (fillMedia ? `<div class="msg msg-ok" style="margin-bottom:16px">${ENTITY[fillMedia].icon} Tape le titre et <strong>choisis ${fillMedia === 'movie' ? 'le film' : 'la série'} dans la liste</strong> : fini les doublons et les fautes d'orthographe.</div>` : '');
+    + (fillMedia ? `<div class="msg msg-ok" style="margin-bottom:16px">${ENTITY[fillMedia].icon} Tape le ${fillMedia === 'artist' ? 'nom' : 'titre'} et <strong>choisis ${ENTITY[fillMedia].the} dans la liste</strong> : fini les doublons et les fautes d'orthographe.</div>` : '');
   $('fill-rows').innerHTML = LOADER;
   replace ? replacePage('fill') : pushPage('fill');
 
@@ -2345,7 +2401,7 @@ function renderFillRows() {
     const inp = document.createElement('input');
     inp.className = 'input';
     inp.value = fillItems[i].ext_id ? itemLabel(fillItems[i]) : fillItems[i].content;
-    inp.placeholder = fillMedia ? `Titre ${fillMedia === 'movie' ? 'du film' : 'de la série'} #${i + 1}…` : 'Ton #' + (i + 1) + '…';
+    inp.placeholder = fillMedia ? `${ENTITY[fillMedia].ph} #${i + 1}…` : 'Ton #' + (i + 1) + '…';
     inp.autocomplete = 'off';
     inp.maxLength = 100;
     inp.enterKeyHint = i < 4 ? 'next' : 'done';
@@ -2378,7 +2434,7 @@ function renderFillRows() {
         const o = document.createElement('div');
         if (fillMedia) {
           o.className = 'ac-opt media';
-          o.innerHTML = (p.poster ? `<img class="ac-poster" src="${TMDB_IMG + p.poster}" alt="" loading="lazy">` : `<div class="ac-poster">${ENTITY[fillMedia].icon}</div>`)
+          o.innerHTML = mediaImg(p, fillMedia)
             + `<div><div>${esc(p.content)}${p.year ? ` <small>${p.year}</small>` : ''}</div>`
             + (p.orig && fold(p.orig) !== fold(p.content) ? `<small>${esc(p.orig)}</small>` : '') + '</div>';
         } else {
@@ -2398,25 +2454,27 @@ function renderFillRows() {
       const taken = new Set(fillItems.map((v, j) => j !== i ? fillKey(v) : '').filter(Boolean));
       if (fillMedia && fillItems[i].ext_id) return show([]);          // déjà choisi
       if (fillMedia && q.length >= 2) {
-        // Recherche TMDB (avec un petit délai pendant la frappe)
+        // Recherche dans la base de référence (TMDB ou MusicBrainz), avec un petit délai pendant la frappe
         clearTimeout(timer);
         const my = ++seq;
         timer = setTimeout(async () => {
           show([], 'Recherche…');
           let res;
-          try { res = await tmdbSearch(fillMedia, inp.value.trim()); }
-          catch (e) { if (my === seq) show([], 'Recherche indisponible pour le moment 😕'); return; }
+          try { res = await mediaSearch(fillMedia, inp.value.trim()); }
+          catch (e) { if (my === seq) show([], 'Recherche indisponible pour le moment 😕 Réessaie dans un instant.'); return; }
           if (my !== seq) return;
-          res = res.filter(r => !taken.has(r.ext_id));
-          show(res, res.length ? '' : `Aucun${fillMedia === 'movie' ? ' film' : 'e série'} trouvé${fillMedia === 'movie' ? '' : 'e'} — essaie le titre original ?`);
-        }, 250);
+          res = res.filter(r => !taken.has(idKey(r)));
+          show(res, res.length ? '' : `Aucun résultat — essaie le titre ${ENTITY[fillMedia].src === 'tmdb' ? 'original' : 'exact, ou le nom de l\'artiste'} ?`);
+        }, ENTITY[fillMedia].src === 'mb' ? 450 : 250);
         return;
       }
+      // Pas de liste automatique quand la case est vide : on n'incite pas à reprendre les réponses des autres
+      if (q.length < 2) return show([]);
       const cur = norm(inp.value);
       let m = fillPool.filter(p => !taken.has(p.key) && p.key !== cur && (!q || p.f.includes(q)));
       if (q) m.sort((a, b) => (b.f.startsWith(q) - a.f.startsWith(q)) || (b.score - a.score));
       const local = m.slice(0, 6);
-      show(local, fillMedia && !m.length ? `Tape au moins 2 lettres pour chercher ${fillMedia === 'movie' ? 'un film' : 'une série'}` : '');
+      show(local);
       if (fillWiki && q.length >= 3) {
         // Suggestions Wikidata en complément (orthographe officielle) ; en cas d'échec, on garde la liste locale
         clearTimeout(timer);
@@ -2456,7 +2514,9 @@ function renderFillRows() {
     inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); list.style.display = 'none'; focusNext(); } });
   }
   if (fillMedia) box.insertAdjacentHTML('beforeend',
-    '<p class="tmdb-note">Données films et séries : <strong>TMDB</strong>. Ce produit utilise l\'API TMDB mais n\'est ni approuvé ni certifié par TMDB.</p>');
+    ENTITY[fillMedia].src === 'tmdb'
+      ? '<p class="tmdb-note">Données films et séries : <strong>TMDB</strong>. Ce produit utilise l\'API TMDB mais n\'est ni approuvé ni certifié par TMDB.</p>'
+      : '<p class="tmdb-note">Données musicales : <strong>MusicBrainz</strong> (base ouverte, licence CC0) · pochettes : Cover Art Archive.</p>');
 }
 
 async function publishFill() {
@@ -2564,7 +2624,7 @@ async function renderSuccess(topic, myVals, isNew) {
 // ─────────────────────────────────────────
 let createStep = 1;
 let createCategory = null;
-let createType = null;   // 'movie' | 'tv' | null
+let createType = null;   // 'movie' | 'tv' | 'artist' | 'album' | 'track' | null
 
 function startCreate() {
   createStep = 1;
@@ -2600,7 +2660,10 @@ function showCreateStep(step) {
 }
 
 function renderTypeChips() {
-  const opts = hasMedia ? [['movie', '🎬 Des films'], ['tv', '📺 Des séries'], [null, '✍️ Autre (texte libre)']] : [[null, '✍️ Texte libre']];
+  const music = [['artist', '🎤 Des artistes'], ['album', '💿 Des albums'], ['track', '🎵 Des chansons']];
+  const screen = [['movie', '🎬 Des films'], ['tv', '📺 Des séries']];
+  const opts = !hasMedia ? [[null, '✍️ Texte libre']]
+    : [...(createCategory === 'Musique' ? [...music, ...screen] : [...screen, ...music]), [null, '✍️ Autre (texte libre)']];
   $('type-chips').innerHTML = opts.map(([v, l]) =>
     `<div class="copt ${createType === v ? 'sel' : ''}" onclick="createType=${v ? `'${v}'` : 'null'};renderTypeChips()">${l}</div>`).join('');
 }

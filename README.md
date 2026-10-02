@@ -34,6 +34,7 @@ Les évolutions se font par des fichiers `supabase/migrations/NNN_*.sql`, à ex�
   Puis, pour devenir admin : `update public.profiles set is_admin = true where handle = '@ton_pseudo';`
 - `004_films_series_tmdb.sql` : sujets films / séries reliés à TMDB (identifiant unique par film, titre FR, année, affiche).
 - `005_plus_de_tops.sql` : 24 nouveaux sujets officiels (capitales, rugby, cyclisme, whiskys, années 90…).
+- `009_musique_musicbrainz.sql` : sujets musique reliés à MusicBrainz (artistes, albums, chansons ; identifiant unique, pochettes).
 
 ### Films et séries (TMDB)
 1. Crée un compte gratuit sur [themoviedb.org](https://www.themoviedb.org/signup), puis **Paramètres → API** → demande une clé (usage personnel / non commercial).
