@@ -35,6 +35,14 @@ Les évolutions se font par des fichiers `supabase/migrations/NNN_*.sql`, à ex�
 - `004_films_series_tmdb.sql` : sujets films / séries reliés à TMDB (identifiant unique par film, titre FR, année, affiche).
 - `005_plus_de_tops.sql` : 24 nouveaux sujets officiels (capitales, rugby, cyclisme, whiskys, années 90…).
 - `009_musique_musicbrainz.sql` : sujets musique reliés à MusicBrainz (artistes, albums, chansons ; identifiant unique, pochettes).
+- `010_defis_sponsorises.sql` : défis sponsorisés (bonus de points, carte aux couleurs de la marque) + exemple « saveurs Danette ».
+
+### Défis sponsorisés
+Table Editor → `sponsored_challenges` (modifiable par les admins uniquement) :
+- `topic_id` (le sujet mis en avant), `brand`, `tagline`, `emoji` ou `logo_url`, `color` (#RRGGBB),
+  `bonus_points` (ajoutés aux 50 pts), `cta_label` / `cta_url` (lien partenaire, affiché une fois le défi relevé),
+  `starts_at` / `ends_at` (période), `is_example` (affiche « Exemple de partenariat » tant qu'aucun accord n'est signé).
+- La mention « Sponsorisé » est toujours affichée (publicité identifiable). Le bonus n'est accordé que pendant la période.
 
 ### Films et séries (TMDB)
 1. Crée un compte gratuit sur [themoviedb.org](https://www.themoviedb.org/signup), puis **Paramètres → API** → demande une clé (usage personnel / non commercial).
