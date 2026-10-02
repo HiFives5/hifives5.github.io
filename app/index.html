@@ -281,6 +281,7 @@ textarea.input{resize:none;min-height:80px}
 .cat-boxes{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:4px 16px 8px}
 .cat-box{background:var(--card);border:1px solid var(--border);border-radius:var(--rsm);padding:12px 6px;text-align:center;cursor:pointer;min-width:0}
 .cat-box:active{opacity:.8}
+.more-link{margin:2px 16px 8px;padding:10px;text-align:center;font-size:13px;font-weight:800;color:var(--orange);background:var(--card);border:1px solid var(--border);border-radius:var(--rsm);cursor:pointer}
 .cat-box-ico{font-size:26px;line-height:1.1}
 .cat-box-name{font-size:12px;font-weight:800;margin-top:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cat-box-n{font-size:10px;font-weight:700;color:var(--t3);margin-top:2px}
@@ -796,7 +797,9 @@ let currentStat = 'filled';
 let hi5Tab = 'recus';
 let afSel = null;   // résultat de recherche ouvert dans Affinités
 let homeTab = 'foryou';
-let searchCat = null;   // null = accueil des thèmes ; sinon catégorie ouverte
+let searchCat = null;   // catégorie ouverte (null = pas dans un thème)
+let searchPop = null;   // classement « Populaires » ouvert (clé de POP_PRESETS)
+let showAllCats = false; // accueil des thèmes : tous les thèmes ou seulement les 9 plus gros
 let searchSort = 'popular';
 
 // ─────────────────────────────────────────
@@ -1018,9 +1021,9 @@ function setCurrentTopic(id) {
   currentTopicId = id;
 }
 
-function countByTopic(scope = 'home') {
+function countByTopic(scope = 'home', pred) {
   const m = {};
-  visibleAnswers(scope).forEach(a => { m[a.topic_id] = (m[a.topic_id] || 0) + 1; });
+  visibleAnswers(scope).filter(a => !pred || pred(a)).forEach(a => { m[a.topic_id] = (m[a.topic_id] || 0) + 1; });
   return m;
 }
 
@@ -1378,13 +1381,30 @@ function filterSummary(scope) {
   return [f.gender, f.age, f.country].filter(Boolean).map(esc).join(' · ');
 }
 
-// Ouvre une catégorie (ou revient aux thèmes avec null) : la recherche repart à zéro
-function setCat(cat) {
+// Classements « Populaires » : un prédicat sur la réponse (date ou profil du répondant)
+const DAY = 86400000;
+const ageOf = p => p?.birth_year ? new Date().getFullYear() - p.birth_year : null;
+const POP_PRESETS = [
+  { k: 'week',  i: '📅', label: 'Cette semaine',  pred: a => Date.now() - new Date(a.created_at) < 7 * DAY },
+  { k: 'month', i: '🗓️', label: 'Ce mois-ci',     pred: a => Date.now() - new Date(a.created_at) < 30 * DAY },
+  { k: 'fr',    i: '🇫🇷', label: 'En France',      pred: a => a.profiles?.country === '🇫🇷 France' },
+  { k: 'women', i: '👩', label: 'Chez les femmes', pred: a => a.profiles?.gender === 'Femme' },
+  { k: 'men',   i: '👨', label: 'Chez les hommes', pred: a => a.profiles?.gender === 'Homme' },
+  { k: 'a40',   i: '🎂', label: 'Chez les 40-49',  pred: a => { const g = ageOf(a.profiles); return g >= 40 && g <= 49; } },
+];
+
+// Ouvre un thème / un classement (null, null = retour à l'accueil) : la recherche repart à zéro
+function openSearchView(cat, pop) {
   searchCat = cat;
+  searchPop = pop;
   $('search-q').value = '';
   window.scrollTo(0, 0);
   renderSearch();
 }
+const setCat = cat => openSearchView(cat, null);
+const setPop = key => openSearchView(null, key);
+
+function toggleAllCats() { showAllCats = !showAllCats; renderSearch(); }
 
 function setSort(btn) {
   document.querySelectorAll('.stab').forEach(t => t.classList.toggle('active', t === btn));
@@ -1395,43 +1415,63 @@ function setSort(btn) {
 function renderSearch() {
   const q = fold($('search-q').value);
   const inCat = searchCat != null;
-  const root = !inCat && !q;   // accueil des thèmes (pas de recherche en cours)
+  const pop = POP_PRESETS.find(x => x.k === searchPop);
+  const root = !inCat && !pop && !q;   // accueil : thèmes + populaires + suggestions
 
-  // En-tête : titre, ou retour + catégorie ouverte
-  $('search-hdr').innerHTML = inCat
-    ? `<div class="sub-hdr"><div class="back-btn" onclick="setCat(null)">←</div>
-        <div style="flex:1;min-width:0"><div class="hdr-kicker">Thème</div>
-        <div class="hdr-title">${CAT_ICON[searchCat] || ''} ${esc(searchCat)}</div></div></div>`
+  // En-tête : titre, ou retour + thème / classement ouvert
+  const subTitle = inCat ? `${CAT_ICON[searchCat] || ''} ${esc(searchCat)}` : pop ? `${pop.i} ${pop.label}` : '';
+  $('search-hdr').innerHTML = inCat || pop
+    ? `<div class="sub-hdr"><div class="back-btn" onclick="openSearchView(null,null)">←</div>
+        <div style="flex:1;min-width:0"><div class="hdr-kicker">${inCat ? 'Thème' : 'Populaires'}</div>
+        <div class="hdr-title">${subTitle}</div></div></div>`
     : '<div class="screen-hdr"><div class="screen-title">Sujets</div></div>';
-  $('search-q').placeholder = inCat ? `Chercher dans ${searchCat} (ex. golf)…` : 'Cinéma, foot, voyage…';
+  $('search-q').placeholder = inCat ? `Chercher dans ${searchCat} (ex. golf)…` : pop ? `Chercher dans « ${pop.label} »…` : 'Cinéma, foot, voyage…';
 
-  // Barre de filtres (démographie) + résumé du filtre actif
+  // Filtres démographiques : seulement dans un thème, un classement ou une recherche
   const sum = filterSummary('search');
-  $('search-cats').innerHTML = '<div class="fc filter-btn" data-scope="search" onclick="openFilters(\'search\')">🌍 Filtres</div>'
+  $('search-cats').innerHTML = root ? '' :
+    '<div class="fc filter-btn" data-scope="search" onclick="openFilters(\'search\')">🌍 Filtres</div>'
     + (sum ? `<div class="fc" style="cursor:default">${sum}</div>` : '');
   updateFilterButtons();
-  $('search-sort').style.display = root ? 'none' : '';
+  $('search-sort').style.display = root || pop ? 'none' : '';
 
-  const counts = countByTopic('search');
   const mine = myTopicIds();
 
   if (root) {
-    const nb = {};
-    topics.forEach(t => { nb[t.category] = (nb[t.category] || 0) + 1; });
-    const top = topics.slice().sort((a, b) => (counts[b.id] || 0) - (counts[a.id] || 0)).filter(t => counts[t.id]).slice(0, 10);
-    $('search-results').innerHTML = `<div class="cat-boxes">${CATEGORIES.map(c => `
-        <div class="cat-box" onclick="setCat('${c.k}')"><div class="cat-box-ico">${c.i}</div>
-          <div class="cat-box-name">${esc(c.k)}</div>
-          <div class="cat-box-n">${nb[c.k] || 0} sujet${(nb[c.k] || 0) > 1 ? 's' : ''}</div></div>`).join('')}</div>`
-      + `<div class="slbl">🔥 Populaires${sum ? ' · ' + sum : ''}</div>`
-      + (top.length ? top.map(t => topicRow(t, counts, mine)).join('')
-        : '<div class="empty"><div class="empty-ico">🤷</div>Aucune réponse avec ces filtres.</div>');
+    // 9 plus gros thèmes (réponses, puis nombre de sujets) ; les autres derrière « Autres thèmes »
+    const byCat = {}, nbT = {};
+    const all = countByTopic('home');
+    topics.forEach(t => { nbT[t.category] = (nbT[t.category] || 0) + 1; byCat[t.category] = (byCat[t.category] || 0) + (all[t.id] || 0); });
+    const cats = CATEGORIES.slice().sort((a, b) => (byCat[b.k] || 0) - (byCat[a.k] || 0) || (nbT[b.k] || 0) - (nbT[a.k] || 0));
+    const shown = showAllCats ? cats : cats.slice(0, 9);
+    const box = (onclick, ico, name, meta) => `<div class="cat-box" onclick="${onclick}"><div class="cat-box-ico">${ico}</div>
+      <div class="cat-box-name">${esc(name)}</div><div class="cat-box-n">${meta}</div></div>`;
+    $('search-results').innerHTML =
+      `<div class="slbl">Thèmes</div><div class="cat-boxes">${shown.map(c =>
+        box(`setCat('${c.k}')`, c.i, c.k, `${nbT[c.k] || 0} sujet${(nbT[c.k] || 0) > 1 ? 's' : ''}`)).join('')}</div>`
+      + (cats.length > 9 ? `<div class="more-link" onclick="toggleAllCats()">${showAllCats ? 'Moins de thèmes ˄' : 'Autres thèmes ›'}</div>` : '')
+      + `<div class="slbl">🔥 Populaires</div><div class="cat-boxes">${POP_PRESETS.map(x =>
+        box(`setPop('${x.k}')`, x.i, x.label, 'Classement')).join('')}</div>`
+      + `<div id="search-sugg"></div>`;
+    // ✨ Suggestions algorithmiques : les 5 sujets les plus pertinents à remplir pour moi
+    const counts = countByTopic('home');
+    const fill = list => {
+      if (stack[stack.length - 1] !== 'search' || !$('search-sugg')) return;
+      $('search-sugg').innerHTML = list.length
+        ? '<div class="slbl">✨ Pour toi</div>' + list.slice(0, 5).map(x => topicRow(x.t, counts, mine, x.why)).join('') : '';
+    };
+    if (suggCache) fill(suggCache.list);
+    else {
+      $('search-sugg').innerHTML = '<div class="slbl">✨ Pour toi</div>' + LOADER;
+      getSuggestions().then(fill).catch(() => { if ($('search-sugg')) $('search-sugg').innerHTML = ''; });
+    }
     return;
   }
 
-  let list = topics.filter(t => (!inCat || t.category === searchCat) && (!q || fold(t.title).includes(q) || (!inCat && fold(t.category).includes(q))));
+  const counts = countByTopic('search', pop?.pred);
+  let list = topics.filter(t => (!inCat || t.category === searchCat) && (!pop || counts[t.id]) && (!q || fold(t.title).includes(q) || (!inCat && !pop && fold(t.category).includes(q))));
 
-  if (searchSort === 'popular') {
+  if (pop || searchSort === 'popular') {
     list.sort((a, b) => (counts[b.id] || 0) - (counts[a.id] || 0));
   } else if (searchSort === 'recent') {
     list.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
@@ -1446,10 +1486,11 @@ function renderSearch() {
     const rank = new Map(suggCache.list.map((x, i) => [x.t.id, i]));
     list = list.filter(t => rank.has(t.id)).sort((a, b) => rank.get(a.id) - rank.get(b.id));
   }
-  const whyOf = searchSort === 'suggested' && suggCache ? new Map(suggCache.list.map(x => [x.t.id, x.why])) : new Map();
+  const whyOf = !pop && searchSort === 'suggested' && suggCache ? new Map(suggCache.list.map(x => [x.t.id, x.why])) : new Map();
 
   $('search-results').innerHTML = list.length
     ? list.map(t => topicRow(t, counts, mine, whyOf.get(t.id))).join('')
+    : pop ? '<div class="empty"><div class="empty-ico">🤷</div>Aucune réponse pour ce classement.</div>'
     : `<div class="empty"><div class="empty-ico">🔍</div>Aucun sujet trouvé${inCat ? ' dans ' + esc(searchCat) : ''}.<br><br>
        <button class="btn btn-primary" style="width:auto;padding:0 20px;height:44px" onclick="startCreate()">Créer ce sujet +</button></div>`;
 }
