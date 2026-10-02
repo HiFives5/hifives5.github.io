@@ -278,6 +278,13 @@ textarea.input{resize:none;min-height:80px}
 .stab{flex:1;padding:9px 0;font-size:12px;font-weight:700;color:var(--t3);background:transparent;border:none;cursor:pointer;border-bottom:2px solid transparent}
 .stab.active{color:var(--orange);border-bottom-color:var(--orange)}
 
+.cat-boxes{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:4px 16px 8px}
+.cat-box{background:var(--card);border:1px solid var(--border);border-radius:var(--rsm);padding:12px 6px;text-align:center;cursor:pointer;min-width:0}
+.cat-box:active{opacity:.8}
+.cat-box-ico{font-size:26px;line-height:1.1}
+.cat-box-name{font-size:12px;font-weight:800;margin-top:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cat-box-n{font-size:10px;font-weight:700;color:var(--t3);margin-top:2px}
+
 /* ── MODAL ── */
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;display:none;align-items:flex-end;justify-content:center}
 .modal-bg.open{display:flex}
@@ -400,14 +407,14 @@ textarea.input{resize:none;min-height:80px}
 
 <!-- ══════ RECHERCHE ══════ -->
 <div id="page-search" class="page">
-  <div class="screen-hdr"><div class="screen-title">Sujets</div></div>
+  <div id="search-hdr"></div>
   <div class="search-box">
     <span style="font-size:15px;color:var(--t3)">🔍</span>
     <input id="search-q" type="search" placeholder="Cinéma, foot, voyage…" oninput="renderSearch()">
   </div>
   <div class="fscr" id="search-cats"></div>
-  <div class="sort-row">
-    <button class="stab active" data-sort="popular" onclick="setSort(this)">Les + remplis</button>
+  <div class="sort-row" id="search-sort">
+    <button class="stab active" data-sort="popular" onclick="setSort(this)">Populaires</button>
     <button class="stab" data-sort="recent" onclick="setSort(this)">Récents</button>
     <button class="stab" data-sort="suggested" onclick="setSort(this)">Suggérés</button>
   </div>
@@ -451,7 +458,7 @@ textarea.input{resize:none;min-height:80px}
     </div>
   </div>
   <div class="fscr" style="padding-top:12px">
-    <div class="fc filter-btn" onclick="openFilters()">🌍 Filtres</div>
+    <div class="fc filter-btn" data-scope="topic" onclick="openFilters('topic')">🌍 Filtres</div>
     <div class="fc" id="tp-count" style="cursor:default"></div>
   </div>
   <div class="scroll" style="padding-bottom:110px">
@@ -775,7 +782,10 @@ let me = null;          // utilisateur Supabase Auth
 let profile = null;     // ligne de la table profiles
 let topics = [];        // tous les sujets
 let answers = [];       // toutes les réponses (léger) + démographie du répondant
-let filters = { country: null, age: null, gender: null };
+const NO_FILTERS = () => ({ country: null, age: null, gender: null });
+// Filtres indépendants par contexte : « search » (Sujets), « topic » (détail d'un sujet), « home » (jamais filtré)
+let filters = { home: NO_FILTERS(), search: NO_FILTERS(), topic: NO_FILTERS() };
+let filterScope = 'search';   // contexte de la fenêtre de filtres ouverte
 let pendingFilters = null;
 let includeDemo = readPref('includeDemo', true);
 let stack = [];         // pile de navigation
@@ -786,7 +796,7 @@ let currentStat = 'filled';
 let hi5Tab = 'recus';
 let afSel = null;   // résultat de recherche ouvert dans Affinités
 let homeTab = 'foryou';
-let searchCat = 'Tous';
+let searchCat = null;   // null = accueil des thèmes ; sinon catégorie ouverte
 let searchSort = 'popular';
 
 // ─────────────────────────────────────────
@@ -991,19 +1001,26 @@ const topicById = id => topics.find(t => t.id === id);
 const myAnswer  = topicId => answers.find(a => a.topic_id === topicId && a.user_id === me.id);
 const myTopicIds = () => new Set(answers.filter(a => a.user_id === me.id).map(a => a.topic_id));
 
-function matchesFilters(p) {
+function matchesFilters(p, scope = 'home') {
   if (!p) return false;
   if (!includeDemo && p.is_demo) return false;
-  if (filters.country && p.country !== filters.country) return false;
-  if (filters.gender && p.gender !== filters.gender) return false;
-  if (filters.age && ageBand(p.birth_year) !== filters.age) return false;
+  const f = filters[scope];
+  if (f.country && p.country !== f.country) return false;
+  if (f.gender && p.gender !== f.gender) return false;
+  if (f.age && ageBand(p.birth_year) !== f.age) return false;
   return true;
 }
-const visibleAnswers = () => answers.filter(a => matchesFilters(a.profiles));
+const visibleAnswers = (scope = 'home') => answers.filter(a => matchesFilters(a.profiles, scope));
 
-function countByTopic() {
+// Un autre sujet s'ouvre : on repart sans filtre
+function setCurrentTopic(id) {
+  if (currentTopicId !== id) filters.topic = NO_FILTERS();
+  currentTopicId = id;
+}
+
+function countByTopic(scope = 'home') {
   const m = {};
-  visibleAnswers().forEach(a => { m[a.topic_id] = (m[a.topic_id] || 0) + 1; });
+  visibleAnswers(scope).forEach(a => { m[a.topic_id] = (m[a.topic_id] || 0) + 1; });
   return m;
 }
 
@@ -1302,7 +1319,7 @@ async function renderActivity() {
     .limit(60);
   if (error) { box.innerHTML = '<div class="empty"><div class="empty-ico">😕</div>Erreur de chargement</div>'; return; }
   if (data.some(t => !topicById(t.topic_id))) { try { await loadData(); } catch (e) {} }
-  const rows = data.filter(t => matchesFilters(t.profiles)).slice(0, 25);
+  const rows = data.filter(t => matchesFilters(t.profiles, 'home')).slice(0, 25);
   box.innerHTML = rows.length
     ? rows.map(t => topCard(t, true)).join('')
     : '<div class="empty"><div class="empty-ico">✋</div>Pas encore d\'activité.</div>';
@@ -1356,15 +1373,18 @@ async function toggleLike(topId, btn) {
 // ─────────────────────────────────────────
 // RECHERCHE / SUJETS
 // ─────────────────────────────────────────
-function renderSearchCats() {
-  const cats = [{ k: 'Tous', i: '' }, ...CATEGORIES];
-  $('search-cats').innerHTML =
-    cats.map(c => `<div class="fc ${c.k === searchCat ? 'active' : ''}" onclick="setCat('${c.k}')">${c.i} ${c.k}</div>`).join('') +
-    '<div class="fc filter-btn" onclick="openFilters()">🌍 Filtres</div>';
-  updateFilterButtons();
+function filterSummary(scope) {
+  const f = filters[scope];
+  return [f.gender, f.age, f.country].filter(Boolean).map(esc).join(' · ');
 }
 
-function setCat(cat) { searchCat = cat; renderSearch(); }
+// Ouvre une catégorie (ou revient aux thèmes avec null) : la recherche repart à zéro
+function setCat(cat) {
+  searchCat = cat;
+  $('search-q').value = '';
+  window.scrollTo(0, 0);
+  renderSearch();
+}
 
 function setSort(btn) {
   document.querySelectorAll('.stab').forEach(t => t.classList.toggle('active', t === btn));
@@ -1373,11 +1393,43 @@ function setSort(btn) {
 }
 
 function renderSearch() {
-  renderSearchCats();
   const q = fold($('search-q').value);
-  const counts = countByTopic();
+  const inCat = searchCat != null;
+  const root = !inCat && !q;   // accueil des thèmes (pas de recherche en cours)
+
+  // En-tête : titre, ou retour + catégorie ouverte
+  $('search-hdr').innerHTML = inCat
+    ? `<div class="sub-hdr"><div class="back-btn" onclick="setCat(null)">←</div>
+        <div style="flex:1;min-width:0"><div class="hdr-kicker">Thème</div>
+        <div class="hdr-title">${CAT_ICON[searchCat] || ''} ${esc(searchCat)}</div></div></div>`
+    : '<div class="screen-hdr"><div class="screen-title">Sujets</div></div>';
+  $('search-q').placeholder = inCat ? `Chercher dans ${searchCat} (ex. golf)…` : 'Cinéma, foot, voyage…';
+
+  // Barre de filtres (démographie) + résumé du filtre actif
+  const sum = filterSummary('search');
+  $('search-cats').innerHTML = '<div class="fc filter-btn" data-scope="search" onclick="openFilters(\'search\')">🌍 Filtres</div>'
+    + (sum ? `<div class="fc" style="cursor:default">${sum}</div>` : '');
+  updateFilterButtons();
+  $('search-sort').style.display = root ? 'none' : '';
+
+  const counts = countByTopic('search');
   const mine = myTopicIds();
-  let list = topics.filter(t => (searchCat === 'Tous' || t.category === searchCat) && (!q || fold(t.title).includes(q) || fold(t.category).includes(q)));
+
+  if (root) {
+    const nb = {};
+    topics.forEach(t => { nb[t.category] = (nb[t.category] || 0) + 1; });
+    const top = topics.slice().sort((a, b) => (counts[b.id] || 0) - (counts[a.id] || 0)).filter(t => counts[t.id]).slice(0, 10);
+    $('search-results').innerHTML = `<div class="cat-boxes">${CATEGORIES.map(c => `
+        <div class="cat-box" onclick="setCat('${c.k}')"><div class="cat-box-ico">${c.i}</div>
+          <div class="cat-box-name">${esc(c.k)}</div>
+          <div class="cat-box-n">${nb[c.k] || 0} sujet${(nb[c.k] || 0) > 1 ? 's' : ''}</div></div>`).join('')}</div>`
+      + `<div class="slbl">🔥 Populaires${sum ? ' · ' + sum : ''}</div>`
+      + (top.length ? top.map(t => topicRow(t, counts, mine)).join('')
+        : '<div class="empty"><div class="empty-ico">🤷</div>Aucune réponse avec ces filtres.</div>');
+    return;
+  }
+
+  let list = topics.filter(t => (!inCat || t.category === searchCat) && (!q || fold(t.title).includes(q) || (!inCat && fold(t.category).includes(q))));
 
   if (searchSort === 'popular') {
     list.sort((a, b) => (counts[b.id] || 0) - (counts[a.id] || 0));
@@ -1398,7 +1450,7 @@ function renderSearch() {
 
   $('search-results').innerHTML = list.length
     ? list.map(t => topicRow(t, counts, mine, whyOf.get(t.id))).join('')
-    : `<div class="empty"><div class="empty-ico">🔍</div>Aucun sujet trouvé.<br><br>
+    : `<div class="empty"><div class="empty-ico">🔍</div>Aucun sujet trouvé${inCat ? ' dans ' + esc(searchCat) : ''}.<br><br>
        <button class="btn btn-primary" style="width:auto;padding:0 20px;height:44px" onclick="startCreate()">Créer ce sujet +</button></div>`;
 }
 
@@ -1411,8 +1463,9 @@ const FILTER_GROUPS = [
   { key: 'gender', label: 'Genre', values: GENDERS },
 ];
 
-function openFilters() {
-  pendingFilters = { ...filters };
+function openFilters(scope) {
+  filterScope = scope;
+  pendingFilters = { ...filters[scope] };
   renderFilterGroups();
   $('filter-modal').classList.add('open');
 }
@@ -1433,10 +1486,10 @@ function pickFilter(key, idx) {
   renderFilterGroups();
 }
 
-function resetFilters() { pendingFilters = { country: null, age: null, gender: null }; renderFilterGroups(); }
+function resetFilters() { pendingFilters = NO_FILTERS(); renderFilterGroups(); }
 
 function applyFilters() {
-  filters = { ...pendingFilters };
+  filters[filterScope] = { ...pendingFilters };
   closeFilters();
   updateFilterButtons();
   const cur = stack[stack.length - 1];
@@ -1444,8 +1497,8 @@ function applyFilters() {
 }
 
 function updateFilterButtons() {
-  const n = Object.values(filters).filter(Boolean).length;
   document.querySelectorAll('.filter-btn').forEach(b => {
+    const n = Object.values(filters[b.dataset.scope]).filter(Boolean).length;
     b.textContent = n ? `🌍 Filtres (${n})` : '🌍 Filtres';
     b.classList.toggle('on', n > 0);
   });
@@ -1589,7 +1642,7 @@ async function openTopic(id) {
   if (!await ensureTopic(id)) return toast('Sujet introuvable');
   // Pas encore répondu → on remplit d'abord (pas d'influence, et les stats restent la récompense)
   if (!myAnswer(id)) return openFillById(id);
-  currentTopicId = id;
+  setCurrentTopic(id);
   pushPage('topic');
   renderTopic(id);
 }
@@ -1604,7 +1657,7 @@ async function renderTopic(id) {
   $('tp-fill-btn').textContent = mineAns ? 'Modifier mon top 5' : 'Faire mon top 5 →';
   $('tp-fill-btn').onclick = () => openFill(t);
 
-  const vis = visibleAnswers().filter(a => a.topic_id === id);
+  const vis = visibleAnswers('topic').filter(a => a.topic_id === id);
   const n = vis.length;
   $('tp-count').textContent = `${n} réponse${n > 1 ? 's' : ''}`;
   $('tp-mine').innerHTML = '';
@@ -1653,7 +1706,7 @@ async function renderTopic(id) {
   // Réponses récentes des autres
   const byTop = {};
   items.forEach(it => (byTop[it.top_id] = byTop[it.top_id] || []).push(it));
-  const rows = (recent || []).filter(r => matchesFilters(r.profiles)).slice(0, 10);
+  const rows = (recent || []).filter(r => matchesFilters(r.profiles, 'topic')).slice(0, 10);
   $('tp-recent').innerHTML = rows.length
     ? rows.map(r => topCard({ ...r, top_items: byTop[r.id] || [] }, false)).join('')
     : '<div style="font-size:13px;color:var(--t3);padding:0 20px 16px">Aucune réponse pour l\'instant.</div>';
@@ -2192,7 +2245,7 @@ async function openFill(topic, replace) {
   $('fill-title').textContent = topic.title;
   $('fill-btn').textContent = fillExisting ? 'Enregistrer ✋' : 'Publier mon top ✋';
   $('fill-btn').disabled = false;
-  const others = answers.filter(a => a.topic_id === topic.id && a.user_id !== me.id && matchesFilters(a.profiles)).length;
+  const others = answers.filter(a => a.topic_id === topic.id && a.user_id !== me.id && matchesFilters(a.profiles, 'home')).length;
   $('fill-teaser').innerHTML = (fillExisting ? '' : `<div class="insight" style="margin:0 0 18px;padding:14px 16px">
     <div class="ins-text">${others
       ? `🔒 <strong style="color:var(--text)">${others} personne${others > 1 ? 's ont' : ' a'} déjà répondu.</strong> Découvre leur classement et compare-toi après avoir publié.`
@@ -2422,7 +2475,7 @@ async function renderSuccess(topic, myVals, isNew) {
   $('sc-see').onclick = () => {
     // Si on venait déjà de la page de ce sujet, on y retourne simplement
     if (stack[stack.length - 2] === 'topic' && currentTopicId === topic.id) return goBack();
-    currentTopicId = topic.id;
+    setCurrentTopic(topic.id);
     replacePage('topic');
     renderTopic(topic.id);
   };
@@ -2443,7 +2496,7 @@ async function renderSuccess(topic, myVals, isNew) {
   }
 
   const items = await fetchTopicItems(topic.id).catch(() => []);
-  const others = visibleAnswers().filter(a => a.topic_id === topic.id && a.user_id !== me.id);
+  const others = visibleAnswers('topic').filter(a => a.topic_id === topic.id && a.user_id !== me.id);
   const otherIds = new Set(others.map(a => a.id));
   const agg = aggregate(items, otherIds);
   const byKey = Object.fromEntries(agg.rows.map(r => [r.key, r]));
