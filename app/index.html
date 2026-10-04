@@ -2198,7 +2198,13 @@ async function renderStat(kind) {
     const other = pts - filled * 50 - created * 20 - bonus;
     // Historique : un événement par top rempli (+50) et par sujet créé (+20)
     const events = [
-      ...myAnswers.map(a => ({ at: a.created_at, pts: 50, ico: '✋', txt: 'Top rempli', t: topicById(a.topic_id) })),
+      ...myAnswers.map(a => {
+        // Top publié pendant un défi sponsorisé sur ce sujet : +50 + le bonus du défi
+        const c = [...sponsored, ...sponsoredPast].find(c => c.topic_id === a.topic_id
+          && new Date(a.created_at) >= new Date(c.starts_at) && new Date(a.created_at) <= new Date(c.ends_at));
+        return c ? { at: a.created_at, pts: 50 + (c.bonus_points || 0), ico: '⭐', txt: 'Défi sponsorisé ' + c.brand, t: topicById(a.topic_id) }
+          : { at: a.created_at, pts: 50, ico: '✋', txt: 'Top rempli', t: topicById(a.topic_id) };
+      }),
       ...myTopics.map(t => ({ at: t.created_at, pts: 20, ico: '✏️', txt: 'Sujet créé', t })),
     ].sort((a, b) => new Date(b.at) - new Date(a.at));
     body.innerHTML = `
