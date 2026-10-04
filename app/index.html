@@ -150,6 +150,9 @@ textarea.input{resize:none;min-height:80px}
 .sp-bonus{display:inline-block;background:var(--gold);color:#2A1A00;font-weight:900;font-size:12px;border-radius:9px;padding:4px 9px}
 .sp-btn{background:#fff;color:#1A1A1A;height:44px;border-radius:12px;font-size:14px}
 .sp-cta{display:block;text-align:center;margin-top:10px;color:#fff;font-size:12px;font-weight:700;opacity:.85}
+.sp-streak{font-size:12px;background:rgba(0,0,0,.25);border-radius:9px;padding:7px 10px;margin:-4px 0 12px}
+.sp-top1{font-size:12.5px;background:rgba(255,255,255,.14);border-radius:9px;padding:7px 10px;margin:-4px 0 12px}
+.sp-next{text-align:center;font-size:11.5px;opacity:.7;margin-top:10px}
 .ch-dots{display:flex;justify-content:center;gap:5px;margin:2px 0 4px}
 .ch-dots span{width:6px;height:6px;border-radius:3px;background:var(--b2);transition:all .2s}
 .ch-dots span.on{width:16px;background:var(--orange)}
@@ -904,9 +907,17 @@ async function loadData() {
   topics = t;
   answers = a;
   // Défis sponsorisés en cours (table absente tant que la migration 010 n'est pas exécutée)
-  const nowIso = new Date().toISOString();
-  const sp = await sb.from('sponsored_challenges').select('*').lte('starts_at', nowIso).gte('ends_at', nowIso).order('starts_at');
-  sponsored = sp.error ? [] : (sp.data || []).filter(c => topicById(c.topic_id));
+  // On charge 60 jours d'historique (pour la série) et les 2 jours à venir (pour le teaser de demain)
+  const now = Date.now();
+  const sp = await sb.from('sponsored_challenges').select('*')
+    .gte('ends_at', new Date(now - 60 * 86400000).toISOString())
+    .lte('starts_at', new Date(now + 2 * 86400000).toISOString())
+    .order('starts_at');
+  const all = sp.error ? [] : (sp.data || []).filter(c => topicById(c.topic_id));
+  const t0 = c => new Date(c.starts_at).getTime(), t1 = c => new Date(c.ends_at).getTime();
+  sponsored = all.filter(c => t0(c) <= now && t1(c) >= now);
+  sponsoredPast = all.filter(c => t1(c) < now).sort((a, b) => t0(b) - t0(a));
+  sponsoredNext = all.find(c => t0(c) > now) || null;
   lastLoad = Date.now();
   suggCache = null;   // les suggestions dépendent des réponses
 }
@@ -914,6 +925,8 @@ async function loadData() {
 // Migration 004 (films / séries TMDB) exécutée ? Détecté au premier chargement.
 let hasMedia = null;
 let sponsored = [];   // défis sponsorisés en cours
+let sponsoredPast = [];   // défis passés (60 jours), du plus récent au plus ancien
+let sponsoredNext = null; // prochain défi (teaser)
 const sponsoredFor = topicId => sponsored.find(c => c.topic_id === topicId) || null;
 const TOPIC_COLS = () => 'id,title,category,created_by,is_official,created_at' + (hasMedia ? ',entity_type' : '');
 const ITEM_COLS  = () => 'rank,content' + (hasMedia ? ',ext_id,year,poster' : '');
@@ -1329,6 +1342,7 @@ function chDots(el) {
 function sponsoredCard(c, counts, mine) {
   const t = topicById(c.topic_id);
   const done = mine.has(t.id);
+  const streak = sponsoredStreak(mine);
   const n = counts[t.id] || 0;
   const color = /^#[0-9A-Fa-f]{6}$/.test(c.color) ? c.color : '#5B2C14';
   return `<div class="ch-card sp-card" style="background:linear-gradient(145deg, ${color}, #141014)">
@@ -1342,13 +1356,49 @@ function sponsoredCard(c, counts, mine) {
       <div style="font-size:17px;font-weight:900;letter-spacing:-.3px;line-height:1.25">${esc(t.title)}</div>
     </div>
     ${c.tagline ? `<div style="font-size:13px;opacity:.85;line-height:1.4;margin-bottom:10px">${esc(c.tagline)}</div>` : ''}
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap">
       <span class="sp-bonus">+${50 + (c.bonus_points || 0)} pts</span>
       <span style="font-size:12px;opacity:.75">${n} participant${n > 1 ? 's' : ''}</span>
+      <span style="font-size:12px;opacity:.75;margin-left:auto">⏰ ${timeLeft(c.ends_at)}</span>
     </div>
+    ${streak >= 2 ? `<div class="sp-streak">🔥 Série : <strong>${streak} jours</strong> d'affilée — ne la casse pas !</div>`
+      : !done && streak === 1 ? `<div class="sp-streak">🔥 Relève-le pour lancer ta série !</div>` : ''}
+    ${done ? `<div class="sp-top1" id="sp-top1">🏆 N°1 de la communauté : …</div>` : ''}
     <button class="btn sp-btn" onclick="${done ? `openTopic('${t.id}')` : `openFillById('${t.id}')`}">${done ? '✓ Relevé — voir le classement' : 'Relever le défi →'}</button>
     ${done && c.cta_url ? `<a class="sp-cta" href="${esc(c.cta_url)}" target="_blank" rel="noopener sponsored">${esc(c.cta_label || 'Découvrir la marque')} ↗</a>` : ''}
+    ${sponsoredNext ? `<div class="sp-next">🤫 Demain : <span style="font-size:16px">${esc(sponsoredNext.emoji || '🎁')}</span> … surprise !</div>` : ''}
   </div>`;
+}
+
+// Temps restant avant la fin d'un défi : « 5 h 12 » ou « 12 min »
+function timeLeft(endIso) {
+  const s = Math.max(0, Math.floor((new Date(endIso) - Date.now()) / 1000));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  return h ? `encore ${h} h ${String(m).padStart(2, '0')}` : `encore ${m} min`;
+}
+
+// Série : nombre de jours consécutifs (jusqu'à aujourd'hui) où j'ai relevé le défi sponsorisé.
+// Si celui du jour n'est pas encore fait, la série d'hier reste « en cours ».
+function sponsoredStreak(mine) {
+  const today = sponsored[0];
+  let n = today && mine.has(today.topic_id) ? 1 : 0;
+  for (const c of sponsoredPast) {
+    if (!mine.has(c.topic_id)) break;
+    n++;
+  }
+  return n;
+}
+
+// Une fois le défi relevé : le n°1 de la communauté (récompense)
+async function fillSponsoredTop1(c) {
+  const el = $('sp-top1');
+  if (!el) return;
+  try {
+    const items = await fetchTopicItems(c.topic_id);
+    const agg = aggregate(items, new Set(visibleAnswers('home').filter(a => a.topic_id === c.topic_id).map(a => a.id)));
+    const r = agg.rows[0];
+    el.innerHTML = r ? `🏆 N°1 de la communauté : <strong>${esc(r.content)}</strong> (${Math.round(r.n / agg.total * 100)} %)` : '';
+  } catch (e) { el.innerHTML = ''; }
 }
 
 // why : explication de la suggestion (HTML déjà échappé)
@@ -1390,6 +1440,7 @@ function renderHome() {
       <button class="btn btn-green" style="height:44px;border-radius:12px;font-size:14px" onclick="${done ? `openTopic('${d.id}')` : `openFillById('${d.id}')`}">
         ${done ? '✓ Relevé — voir les résultats' : 'Relever le défi →'}</button>
     </div>${sc ? sponsoredCard(sc, counts, mine) : ''}</div>${sc ? '<div class="ch-dots"><span class="on"></span><span></span></div>' : ''}`;
+    if (sc && mine.has(sc.topic_id)) fillSponsoredTop1(sc);
   }
 
   // Suggérés pour toi (calcul asynchrone), puis « À remplir » sans doublon
