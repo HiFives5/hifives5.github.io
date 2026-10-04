@@ -2567,12 +2567,31 @@ function renderFillRows() {
           o.className = 'ac-opt';
           o.textContent = p.content;
         }
-        o.addEventListener('pointerdown', e => { e.preventDefault(); choose(p); });
+        // Choix au « tap » (click) : faire glisser le doigt sur la liste la fait défiler sans rien choisir
+        o.addEventListener('click', () => choose(p));
         list.appendChild(o);
       });
       if (info) list.insertAdjacentHTML('beforeend', `<div class="ac-info">${info}</div>`);
       list.style.display = (opts.length || info) && document.activeElement === inp ? 'block' : 'none';
     };
+
+    // Doigt ou souris sur la liste : la case peut perdre le focus (défilement sur iPhone) sans que la liste se ferme
+    let inList = false;
+    const closeOutside = e => {
+      if (acBox.contains(e.target)) return;
+      document.removeEventListener('pointerdown', closeOutside, true);
+      if (document.activeElement !== inp) {
+        list.style.display = 'none'; markInvalid();
+        if (!document.activeElement || !document.activeElement.closest || !document.activeElement.closest('#fill-rows')) document.body.classList.remove('kb-open');
+      }
+    };
+    list.addEventListener('pointerdown', e => {
+      if (e.pointerType === 'mouse') e.preventDefault();   // souris : la case garde le focus
+      inList = true;
+    });
+    const leaveList = () => setTimeout(() => { inList = false; }, 400);
+    list.addEventListener('pointerup', leaveList);
+    list.addEventListener('pointercancel', leaveList);
 
     let seq = 0, timer = null;
     const refresh = () => {
@@ -2634,6 +2653,11 @@ function renderFillRows() {
       }, 300);
     });
     inp.addEventListener('blur', () => setTimeout(() => {
+      if (inList && list.style.display === 'block') {
+        // On fait défiler la liste : elle reste ouverte jusqu'à un choix ou un appui ailleurs
+        document.addEventListener('pointerdown', closeOutside, true);
+        return;
+      }
       list.style.display = 'none'; markInvalid();
       if (!document.activeElement || !document.activeElement.closest || !document.activeElement.closest('#fill-rows')) document.body.classList.remove('kb-open');
     }, 150));
