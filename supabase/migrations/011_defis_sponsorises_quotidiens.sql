@@ -10,13 +10,14 @@
 -- Pour remplacer un jour par un vrai partenaire : Table Editor > sponsored_challenges.
 -- ════════════════════════════════════════════════════════════════
 
-drop table if exists tmp_sponsor_cat;
-create temp table tmp_sponsor_cat (
+drop table if exists public.tmp_sponsor_cat;
+create table public.tmp_sponsor_cat (
   idx int, brand text, title text, category text, emoji text, color text, tagline text,
   cta_label text, cta_url text, sugg text[]
 );
+alter table public.tmp_sponsor_cat enable row level security;
 
-insert into tmp_sponsor_cat values
+insert into public.tmp_sponsor_cat values
  (0,  'Danette', 'Top 5 saveurs de Danette', 'Gastronomie', '🍮', '#5B2C14', 'On se lève tous pour… laquelle ? Classe tes 5 saveurs préférées !', 'Découvrir les saveurs', 'https://www.danette.fr',
       array['Chocolat','Vanille','Caramel','Chocolat noir','Praliné','Chocolat au lait','Café','Pistache']),
  (1,  'Haribo', 'Top 5 bonbons Haribo', 'Nostalgie', '🍬', '#C8102E', 'Haribo, c''est beau la vie… mais lequel est le meilleur ?', 'Voir les bonbons', 'https://www.haribo.com',
@@ -80,12 +81,12 @@ insert into tmp_sponsor_cat values
 
 -- 1. Sujets (officiels) + suggestions
 insert into public.topics (title, category, is_official)
-select title, category, true from tmp_sponsor_cat
+select title, category, true from public.tmp_sponsor_cat
 on conflict do nothing;
 
 insert into public.topic_suggestions (topic_id, content, weight)
 select tp.id, s.content, array_length(c.sugg, 1) - s.ord::int + 1
-from tmp_sponsor_cat c
+from public.tmp_sponsor_cat c
 join public.topics tp on lower(tp.title) = lower(c.title)
 cross join lateral unnest(c.sugg) with ordinality as s(content, ord)
 on conflict do nothing;
@@ -104,7 +105,7 @@ select tp.id, c.brand, c.tagline, c.emoji, c.color, 100, c.cta_label, c.cta_url,
        true
 from generate_series((now() at time zone 'Europe/Paris')::date, (now() at time zone 'Europe/Paris')::date + 364, interval '1 day') as g(d0)
 cross join lateral (select g.d0::date as d) dd
-join tmp_sponsor_cat c on c.idx = ((dd.d - date '2026-01-01') % 30)
+join public.tmp_sponsor_cat c on c.idx = ((dd.d - date '2026-01-01') % 30)
 join public.topics tp on lower(tp.title) = lower(c.title)
 where not exists (
   select 1 from public.sponsored_challenges x
@@ -133,4 +134,4 @@ from (
 where x.rk <= 5
 on conflict do nothing;
 
-drop table if exists tmp_sponsor_cat;
+drop table if exists public.tmp_sponsor_cat;
