@@ -195,7 +195,7 @@ textarea.input{resize:none;min-height:80px}
 .rank-n.ok{background:var(--og);color:var(--orange);border-color:rgba(255,92,46,.3)}
 .ac-box{flex:1;position:relative}
 .ac-box .input{height:44px;padding:0 14px}
-.ac-list{display:none;position:absolute;left:0;right:0;top:48px;background:var(--card2);border:1px solid var(--b2);border-radius:12px;overflow:hidden;z-index:30;box-shadow:0 12px 30px rgba(0,0,0,.5)}
+.ac-list{display:none;position:absolute;left:0;right:0;top:48px;background:var(--card2);border:1px solid var(--b2);border-radius:12px;overflow-y:auto;max-height:min(46vh,340px);-webkit-overflow-scrolling:touch;z-index:30;box-shadow:0 12px 30px rgba(0,0,0,.5)}
 .ac-opt{padding:11px 14px;font-size:14px;font-weight:600;color:var(--text);cursor:pointer;border-top:1px solid var(--border)}
 .ac-opt:first-child{border-top:none}
 .ac-opt:active,.ac-opt:hover{background:var(--og)}
@@ -938,18 +938,27 @@ function idKey(it) {
 
 async function tmdbSearch(type, q) {
   const bearer = TMDB_KEY.length > 40;   // jeton v4 (long) ou clé v3 (32 caractères)
-  const url = `https://api.themoviedb.org/3/search/${type}?query=${encodeURIComponent(q)}&language=fr-FR&include_adult=false`
+  // « Titanic 1997 » : l'année en fin de saisie affine la recherche
+  const ym = q.match(/^(.*\S)\s+\(?((?:18|19|20)\d\d)\)?$/);
+  const term = ym ? ym[1] : q, year = ym ? ym[2] : '';
+  const url = `https://api.themoviedb.org/3/search/${type}?query=${encodeURIComponent(term)}&language=fr-FR&include_adult=false`
+    + (year ? `&${type === 'movie' ? 'year' : 'first_air_date_year'}=${year}` : '')
     + (bearer ? '' : '&api_key=' + TMDB_KEY);
   const res = await fetch(url, bearer ? { headers: { Authorization: 'Bearer ' + TMDB_KEY } } : {});
   if (!res.ok) throw new Error('TMDB ' + res.status);
   const j = await res.json();
-  return (j.results || []).slice(0, 7).map(r => ({
-    content: r.title || r.name,
-    orig: r.original_title || r.original_name,
-    ext_id: `tmdb:${type}:${r.id}`,
-    year: parseInt((r.release_date || r.first_air_date || '').slice(0, 4), 10) || null,
-    poster: r.poster_path || null,
-  }));
+  // Titre exact d'abord, puis les plus connus (nombre de votes) : les classiques passent devant les nouveautés obscures
+  const t = fold(term);
+  const exact = r => [r.title, r.name, r.original_title, r.original_name].some(x => x && fold(x) === t) ? 1 : 0;
+  return (j.results || []).map((r, i) => ({ r, i }))
+    .sort((a, b) => (exact(b.r) - exact(a.r)) || ((b.r.vote_count || 0) - (a.r.vote_count || 0)) || (a.i - b.i))
+    .slice(0, 15).map(({ r }) => ({
+      content: r.title || r.name,
+      orig: r.original_title || r.original_name,
+      ext_id: `tmdb:${type}:${r.id}`,
+      year: parseInt((r.release_date || r.first_air_date || '').slice(0, 4), 10) || null,
+      poster: r.poster_path || null,
+    }));
 }
 
 // MusicBrainz (base musicale ouverte, CC0) : artistes, albums, chansons. 1 requête/s max par IP.
@@ -959,30 +968,40 @@ const mbArtist = credit => (credit || []).map(c => c.name + (c.joinphrase || '')
 async function mbSearch(type, q) {
   const key = type + '|' + fold(q);
   if (mbCache.has(key)) return mbCache.get(key);
-  const term = luceneEsc(q.trim());
+  // « titre - artiste » : on cherche le titre chez cet artiste
+  const parts = q.split(/\s+[-–—]\s+/).map(x => x.trim()).filter(Boolean);
+  const term = luceneEsc(parts[0] || q.trim()), by = parts[1] ? luceneEsc(parts[1]) : '';
   const path = type === 'artist' ? `artist/?query=artist:(${term})`
-    : type === 'album' ? `release-group/?query=releasegroup:(${term}) AND primarytype:album`
-    : `recording/?query=recording:(${term}) AND video:false`;
-  const res = await fetch(`https://musicbrainz.org/ws/2/${path}&fmt=json&limit=${type === 'track' ? 25 : 10}`);
+    : type === 'album' ? `release-group/?query=releasegroup:(${term})${by ? ` AND artist:(${by})` : ''} AND primarytype:album`
+    : `recording/?query=recording:(${term})${by ? ` AND artist:(${by})` : ''} AND video:false`;
+  const res = await fetch(`https://musicbrainz.org/ws/2/${path}&fmt=json&limit=${type === 'artist' ? 10 : 50}`);
   if (!res.ok) throw new Error('MusicBrainz ' + res.status);
   const j = await res.json();
+  // Versions « parasites » (live, remix, karaoké, reprise…) reléguées derrière l'original
+  const noisy = /live|karaoke|karaok|cover|remix|instrumental|demo|acoustic|edit|session|tribute|reprise|version/i;
   const seen = new Set();
   let out;
   if (type === 'artist') {
-    out = (j.artists || []).map(a => ({ content: a.name, orig: [a.disambiguation, a.country].filter(Boolean).join(' · '), ext_id: 'mb:artist:' + a.id, year: null, poster: null }));
+    out = (j.artists || []).map(a => ({ content: a.name, orig: [a.disambiguation, a.country].filter(Boolean).join(' · '), ext_id: 'mb:artist:' + a.id, year: null, poster: null, _s: a.score || 0 }));
   } else if (type === 'album') {
     out = (j['release-groups'] || []).map(r => ({
       content: `${r.title} — ${mbArtist(r['artist-credit'])}`, ext_id: 'mb:album:' + r.id,
       year: parseInt((r['first-release-date'] || '').slice(0, 4), 10) || null, poster: 'caa',
+      // albums studio d'abord : compilations, lives, bandes originales, remixes après
+      _s: (r.score || 0) - ((r['secondary-types'] || []).length ? 30 : 0),
     }));
   } else {
     out = (j.recordings || []).map(r => ({
       content: `${r.title} — ${mbArtist(r['artist-credit'])}`, ext_id: 'mb:track:' + r.id,
       year: parseInt((r['first-release-date'] || '').slice(0, 4), 10) || null, poster: null,
+      // enregistrement original : pas de précision « live / remix… », présent sur une sortie officielle
+      _s: (r.score || 0) - (noisy.test(r.disambiguation || '') || noisy.test(r.title) && !noisy.test(term) ? 40 : 0)
+        - ((r.releases || []).some(x => x.status === 'Official') ? 0 : 15),
     }));
   }
+  out.sort((a, b) => b._s - a._s);
   // Un même titre peut revenir plusieurs fois (versions, homonymes) : on garde la première occurrence
-  out = out.filter(r => { const k = idKey(r) || r.ext_id; return !seen.has(k) && seen.add(k); }).slice(0, 7);
+  out = out.filter(r => { const k = idKey(r) || r.ext_id; return !seen.has(k) && seen.add(k); }).slice(0, 12);
   mbCache.set(key, out);
   return out;
 }
@@ -2520,7 +2539,7 @@ function renderFillRows() {
           catch (e) { if (my === seq) show([], 'Recherche indisponible pour le moment 😕 Réessaie dans un instant.'); return; }
           if (my !== seq) return;
           res = res.filter(r => !taken.has(idKey(r)));
-          show(res, res.length ? '' : `Aucun résultat — essaie le titre ${ENTITY[fillMedia].src === 'tmdb' ? 'original' : 'exact, ou le nom de l\'artiste'} ?`);
+          show(res, res.length ? '' : `Aucun résultat — ${ENTITY[fillMedia].src === 'tmdb' ? 'essaie le titre original, ou ajoute l\'année' : 'essaie « titre - artiste »'} ?`);
         }, ENTITY[fillMedia].src === 'mb' ? 450 : 250);
         return;
       }
