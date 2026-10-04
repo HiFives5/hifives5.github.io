@@ -2560,8 +2560,19 @@ function renderFillRows() {
       list.innerHTML = '';
       focusNext();
     };
+    // Liste vers le haut ou le bas selon la place visible (clavier compris), et jamais plus haute que cette place :
+    // la première proposition reste toujours à l'écran
+    const placeList = () => {
+      const vv = window.visualViewport, top = vv ? vv.offsetTop : 0, h = vv ? vv.height : window.innerHeight;
+      const r = inp.getBoundingClientRect();
+      const below = top + h - r.bottom - 12, above = r.top - top - 12;
+      const up = below < 220 && above > below;
+      list.classList.toggle('up', up);
+      list.style.maxHeight = Math.max(110, Math.min(340, up ? above : below)) + 'px';
+    };
     const show = (opts, info) => {
       list.innerHTML = '';
+      list.scrollTop = 0;
       opts.forEach(p => {
         const o = document.createElement('div');
         if (fillMedia) {
@@ -2579,7 +2590,13 @@ function renderFillRows() {
       });
       if (info) list.insertAdjacentHTML('beforeend', `<div class="ac-info">${info}</div>`);
       list.style.display = (opts.length || info) && document.activeElement === inp ? 'block' : 'none';
+      if (list.style.display === 'block') placeList();
     };
+    if (window.visualViewport) {
+      const replace = () => { if (list.style.display === 'block') placeList(); };
+      visualViewport.addEventListener('resize', replace);
+      visualViewport.addEventListener('scroll', replace);
+    }
 
     // Doigt ou souris sur la liste : la case peut perdre le focus (défilement sur iPhone) sans que la liste se ferme
     let inList = false;
@@ -2650,13 +2667,8 @@ function renderFillRows() {
     inp.addEventListener('focus', () => {
       refresh();
       document.body.classList.add('kb-open');   // marge basse : la case peut remonter au-dessus du clavier
-      // Les suggestions s'ouvrent vers le haut quand la case est dans le bas de l'écran (clavier)
-      const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-      list.classList.toggle('up', row.getBoundingClientRect().bottom + 200 > vh);
-      setTimeout(() => {
-        row.scrollIntoView({ block: 'center', behavior: 'smooth' });
-        list.classList.toggle('up', row.getBoundingClientRect().bottom + 200 > (window.visualViewport ? window.visualViewport.height : window.innerHeight));
-      }, 300);
+      placeList();
+      setTimeout(() => { row.scrollIntoView({ block: 'center', behavior: 'smooth' }); setTimeout(placeList, 350); }, 300);
     });
     inp.addEventListener('blur', () => setTimeout(() => {
       if (inList && list.style.display === 'block') {
