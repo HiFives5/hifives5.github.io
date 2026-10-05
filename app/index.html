@@ -881,10 +881,10 @@ const LEVEL_NAMES = ['Débutant', 'Curieux', 'Explorateur', 'Connaisseur', 'Pass
 const UNLOCKS = [
   { s: 'Remplir des tops, high fives', a: 'Toi vs la communauté · ta compatibilité avec qui t\'a invité' },
   { s: '💬 Commenter les tops', a: '🔎 « Qui a aussi mis… »' },
-  { s: '✏️ Créer des sujets', a: '💞 Compatibilité et face-à-face sur tous les profils' },
-  { s: '✨ Un titre sous ton pseudo', a: '👯 Tes 3 meilleures affinités' },
+  { s: '✏️ Créer des sujets', a: '🤝 Compatibilité et face-à-face sur tous les profils' },
+  { s: '✨ Un titre sous ton pseudo', a: '🧲 Tes 3 meilleures affinités' },
   { s: '✉️ Messagerie (bientôt)', a: '💞 Âmes sœurs par thème · ⚡ vos désaccords' },
-  { s: '✨ Cadre bronze', a: '👯 Tes 10 meilleures affinités · 🙃 Tes opposés' },
+  { s: '✨ Cadre bronze', a: '🧲 Tes 10 meilleures affinités · 🙃 Tes opposés' },
   { s: '🗳️ Vote du thème sponsorisé (bientôt)', a: '🎁 Les recos de tes affinités' },
   { s: '✨ Cadre argent · 🗳️ proposer un défi (bientôt)', a: '🧭 Ta tribu' },
   { s: '🗳️ Un sujet à la une (bientôt)', a: '📡 Radar d\'âmes sœurs' },
@@ -2094,7 +2094,7 @@ async function getSuggestions() {
     if (tw.length) {
       // part (pondérée par le nombre de réponses communes) de mes affinités qui ont rempli ce sujet
       cands.push({ kind: 'twin', s: 3 * tw.reduce((sum, x) => sum + x.n, 0) / twinWeight,
-        why: `👯 <b style="color:var(--orange);cursor:pointer" onclick="event.stopPropagation();openUser('${tw[0].u}')">${esc(tw[0].handle)}</b>, compatible à ${tw[0].pct} % avec toi, l'a rempli`
+        why: `🧲 <b style="color:var(--orange);cursor:pointer" onclick="event.stopPropagation();openUser('${tw[0].u}')">${esc(tw[0].handle)}</b>, compatible à ${tw[0].pct} % avec toi, l'a rempli`
           + (tw.length > 1 ? ` (et ${tw.length - 1} autre${tw.length > 2 ? 's' : ''} de tes affinités)` : '') });
     }
 
@@ -2260,11 +2260,11 @@ async function renderHelp() {
     <p class="help-p" style="padding-top:10px">Modifier un top déjà rempli ne rapporte pas de points. Les high fives et commentaires que tu reçois ne donnent pas de points directement, mais font avancer tes badges. Tu as <b>${pts} points</b>.</p>
 
     <div class="slbl">📈 Niveaux et déblocages</div>
-    <p class="help-p">Chaque niveau débloque une récompense de <b>🛡️ statut</b> et une nouvelle façon de découvrir tes <b>💞 affinités</b>. Tu es <b>niveau ${lvl} · ${LEVEL_NAMES[lvl - 1]}</b>.</p>
+    <p class="help-p">Chaque niveau débloque une récompense de <b>🛡️ statut</b> et une nouvelle façon de découvrir tes <b>🧲 affinités</b>. Tu es <b>niveau ${lvl} · ${LEVEL_NAMES[lvl - 1]}</b>.</p>
     <div class="card" style="margin:0 16px;padding:4px 16px">
       ${LEVELS.map((min, i) => `<div class="lvl-row ${i + 1 === lvl ? 'cur' : pts >= min ? '' : 'off'}">
         <span>${pts >= min ? '✅' : '🔒'}</span><span>Niv. ${i + 1} · ${LEVEL_NAMES[i]}</span><span style="margin-left:auto">${min} pts</span></div>
-        <div class="lvl-unl">🛡️ ${UNLOCKS[i].s}<br>💞 ${UNLOCKS[i].a}</div>`).join('')}
+        <div class="lvl-unl">🛡️ ${UNLOCKS[i].s}<br>🧲 ${UNLOCKS[i].a}</div>`).join('')}
     </div>
     <p class="help-p" style="padding-top:10px">Les cadres de photo apparaissent aux niveaux 6 (bronze), 8 (argent) et 10 (or). Le titre sous ton pseudo se choisit dans « ✏️ Mon profil » parmi tes badges.</p>
 
@@ -2274,7 +2274,7 @@ async function renderHelp() {
     <p class="help-p" style="padding-top:10px">Les badges sont attribués automatiquement, une seule fois chacun. Les interactions avec toi-même ne comptent pas, et pour les commentaires on compte des personnes différentes.</p>`
     : '<p class="help-p">Les badges arrivent bientôt.</p>'}
 
-    <div class="slbl">💞 La compatibilité</div>
+    <div class="slbl">🤝 La compatibilité</div>
     <p class="help-p">On compare vos tops <b>sur les sujets que vous avez remplis tous les deux</b>. Une réponse en commun compte d'autant plus qu'elle est haut placée chez vous deux (un n°1 vaut 5, un n°5 vaut 1) : deux tops identiques font 100 %, aucune réponse commune 0 %.</p>
     <p class="help-p">Le % global est la moyenne sur vos sujets communs. Dans les classements, une personne avec beaucoup de sujets en commun passe devant un 100 % obtenu sur un seul sujet.</p>
     <p class="help-p">80 % et plus : <b>Âmes sœurs 💞</b> · 60 % : Très proches ✨ · 40 % : Des goûts en commun 🙂 · 20 % : Quelques points communs · en dessous : Goûts opposés ⚡</p>`;
@@ -2539,20 +2539,20 @@ function renderAffinities() {
 async function renderTwins() {
   const box = $('af-twins');
   if (!myTopicIds().size) {
-    box.innerHTML = '<div class="slbl">👯 Tes affinités</div><div class="hint" style="padding:0 20px">Remplis quelques tops pour découvrir les personnes qui ont les mêmes goûts que toi.</div>';
+    box.innerHTML = '<div class="slbl">🧲 Tes affinités</div><div class="hint" style="padding:0 20px">Remplis quelques tops pour découvrir les personnes qui ont les mêmes goûts que toi.</div>';
     return;
   }
-  if (!suggCache) box.innerHTML = '<div class="slbl">👯 Tes affinités</div>' + LOADER;
+  if (!suggCache) box.innerHTML = '<div class="slbl">🧲 Tes affinités</div>' + LOADER;
   try { await getSuggestions(); } catch (e) { box.innerHTML = ''; return; }
   const lvl = myLevel();
   const twins = (suggCache.twins || []).slice(0, lvl >= 6 ? 10 : 3), soul = suggCache.soulmates || [];
   const pl = (n, w) => `${n} ${w}${n > 1 ? 's' : ''}`;
   if (lvl < 4) {
-    box.innerHTML = '<div class="slbl">👯 Tes plus grandes affinités</div>' + lockBox(4, 'découvre les 3 personnes qui ont les goûts les plus proches des tiens.')
+    box.innerHTML = '<div class="slbl">🧲 Tes plus grandes affinités</div>' + lockBox(4, 'découvre les 3 personnes qui ont les goûts les plus proches des tiens.')
       + '<div class="slbl">💞 Tes âmes sœurs par thème</div>' + lockBox(5, 'ton âme sœur en Cinéma, en Musique, en Sport…');
     return;
   }
-  box.innerHTML = '<div class="slbl">👯 Tes plus grandes affinités</div>' + (twins.length
+  box.innerHTML = '<div class="slbl">🧲 Tes plus grandes affinités</div>' + (twins.length
     ? twins.map(x => `<div class="hi5-row" style="cursor:pointer" onclick="openUser('${x.u}')">
         <div class="cav" style="background:${colorFor(x.handle)}">${initialOf({ handle: x.handle })}</div>
         <div class="hi5-txt"><span class="who">${esc(x.handle)}</span><div class="topic-meta">${compatLabel(x.pct)} · ${pl(x.rows.length, 'sujet')} en commun</div></div>
@@ -2593,7 +2593,7 @@ function affExtras(lvl) {
       <div class="match-sub">${d.main} % de tes réponses sont partagées par au moins 1 personne sur 5</div>
       <div class="match-cats" style="justify-content:flex-start">${d.cats.map(([k, n]) => `<span class="badge-pill">${CAT_ICON[k] || '⭐'} ${esc(k)} · ${n}</span>`).join('')}</div>
       ${d.rare ? `<div class="mrow" style="margin:12px 0 0" onclick="openTopic('${d.rare.t}')"><div class="mt">🦄 Ta réponse la plus rare · ${esc(short(d.rare.t))}</div><div class="mi">${esc(d.rare.label)} <small>· ${d.rare.sh ? `chez ${Math.round(d.rare.sh * 100)} % des autres` : 'personne d\'autre ne l\'a mis'}</small></div></div>` : ''}
-      ${d.consensus ? `<div class="mrow" style="margin:8px 0 0" onclick="openTopic('${d.consensus.t}')"><div class="mt">🤝 Ton n°1 le plus partagé · ${esc(short(d.consensus.t))}</div><div class="mi">${esc(d.consensus.label)} <small>· chez ${Math.round(d.consensus.sh * 100)} % des autres</small></div></div>` : ''}
+      ${d.consensus ? `<div class="mrow" style="margin:8px 0 0" onclick="openTopic('${d.consensus.t}')"><div class="mt">👥 Ton n°1 le plus partagé · ${esc(short(d.consensus.t))}</div><div class="mi">${esc(d.consensus.label)} <small>· chez ${Math.round(d.consensus.sh * 100)} % des autres</small></div></div>` : ''}
     </div>` : '<div class="hint" style="padding:0 20px">Remplis encore quelques sujets populaires pour dessiner ton ADN.</div>';
   return sec('🙃 Tes opposés', 6, 'les personnes aux goûts les plus éloignés des tiens.', opp || '<div class="hint" style="padding:0 20px">Pas encore assez de sujets en commun (2 minimum) pour trouver tes opposés.</div>')
     + sec('🎁 Les recos de tes affinités', 7, 'ce que tes meilleurs matchs adorent et que tu n\'as jamais mis.', rec || '<div class="hint" style="padding:0 20px">Pas encore de reco : remplis des sujets en commun avec tes affinités.</div>')
@@ -2620,7 +2620,7 @@ async function renderMatch(userId, p) {
   const c = compareWith(indexTops(items, key)[me.id] || {}, indexTops(items, key)[userId] || {});
   const who = esc(p.handle);
   if (!c) {
-    box.innerHTML = `<div class="match-card"><div style="font-size:30px">💞</div><div class="match-lbl">Pas encore de sujet en commun</div>
+    box.innerHTML = `<div class="match-card"><div style="font-size:30px">🤝</div><div class="match-lbl">Pas encore de sujet en commun</div>
       <div class="match-sub">Remplis un des tops de ${who} ci-dessous pour découvrir votre compatibilité.</div></div>`;
     return;
   }
@@ -2864,7 +2864,7 @@ async function renderStat(kind) {
       <div class="card" style="margin:0 16px;padding:4px 16px">
         ${LEVELS.map((min, i) => `<div class="lvl-row ${i + 1 === lvl ? 'cur' : pts >= min ? '' : 'off'}">
           <span>${pts >= min ? '✅' : '🔒'}</span><span>Niv. ${i + 1} · ${LEVEL_NAMES[i]}</span><span style="margin-left:auto">${min} pts</span></div>
-          <div class="lvl-unl">🛡️ ${UNLOCKS[i].s}<br>💞 ${UNLOCKS[i].a}</div>`).join('')}
+          <div class="lvl-unl">🛡️ ${UNLOCKS[i].s}<br>🧲 ${UNLOCKS[i].a}</div>`).join('')}
       </div>
       <div class="slbl">Historique</div>
       ${events.length ? byMonth(events, e => e.at, e => `
@@ -3387,7 +3387,7 @@ async function renderSuccess(topic, myVals, isNew) {
   if (invite && invite.t === topic.id && invite.de && invite.de !== me.id) {
     const from = invite.de;
     inv.style.display = '';
-    inv.textContent = '💞 Voir ta compatibilité avec ' + (invite.handle || 'ton ami');
+    inv.textContent = '🤝 Voir ta compatibilité avec ' + (invite.handle || 'ton ami');
     inv.onclick = () => { invite = null; openUser(from); };
   } else inv.style.display = 'none';
   $('sc-see').onclick = () => {
