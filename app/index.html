@@ -140,6 +140,10 @@ textarea.input{resize:none;min-height:80px}
 .p-av.fr-bronze{box-shadow:0 0 0 3px #B87333,0 6px 20px rgba(184,115,51,.35)}
 .p-av.fr-silver{box-shadow:0 0 0 3px #C9CED6,0 6px 20px rgba(201,206,214,.35)}
 .p-av.fr-gold{box-shadow:0 0 0 3px #F5C542,0 6px 22px rgba(245,197,66,.45)}
+.help-p{font-size:13px;color:var(--t2);line-height:1.55;padding:0 20px 10px}
+.help-p b{color:var(--text)}
+.help-tip{margin:12px 16px 4px;padding:14px 40px 14px 16px;position:relative;cursor:pointer}
+.help-tip .x{position:absolute;top:8px;right:12px;font-size:18px;color:var(--t3);padding:4px}
 .match-card{margin:14px 16px 4px;background:linear-gradient(145deg,#1A1020,#0E0E14);border:1px solid rgba(255,92,46,.25);border-radius:var(--r);padding:18px;text-align:center}
 .match-pct{font-size:44px;font-weight:900;letter-spacing:-1.5px;color:var(--orange);line-height:1}
 .match-lbl{font-size:15px;font-weight:800;margin-top:6px}
@@ -451,6 +455,7 @@ textarea.input{resize:none;min-height:80px}
   </div>
   <div class="scroll">
     <div id="home-foryou">
+      <div id="help-tip"></div>
       <div id="daily-box"></div>
       <div id="sugg-box"></div>
       <div class="slbl">À remplir <a onclick="navTo('search')">Voir tous les sujets →</a></div>
@@ -610,6 +615,7 @@ textarea.input{resize:none;min-height:80px}
       <button class="btn btn-ghost" style="flex:1;height:44px;font-size:14px" onclick="openEditProfile()">✏️ Mon profil</button>
       <button class="btn btn-ghost" style="flex:1;height:44px;font-size:14px" onclick="openFeedback()">💬 Donner mon avis</button>
     </div>
+    <div style="padding:10px 16px 0"><button class="btn btn-ghost" style="height:44px;font-size:14px" onclick="openHelp()">❓ Comment ça marche ? Points, niveaux, badges</button></div>
     <div class="xp-card">
       <div style="display:flex;justify-content:space-between">
         <span style="font-size:13px;font-weight:700">Progression</span>
@@ -699,6 +705,18 @@ textarea.input{resize:none;min-height:80px}
     <div class="slbl">Ses tops</div>
     <div id="up-tops" style="padding-bottom:24px"></div>
   </div>
+</div>
+
+<!-- ══════ AIDE : COMMENT ÇA MARCHE ══════ -->
+<div id="page-help" class="page no-nav">
+  <div class="sub-hdr">
+    <div class="back-btn" onclick="goBack()">←</div>
+    <div>
+      <div class="hdr-kicker" style="color:var(--t3)">Aide</div>
+      <div class="hdr-title">Comment ça marche ?</div>
+    </div>
+  </div>
+  <div class="scroll" style="padding-bottom:32px"><div id="help-body"></div></div>
 </div>
 
 <!-- ══════ AFFINITÉS ══════ -->
@@ -1340,6 +1358,7 @@ const RENDERERS = {
   user: () => renderUser(currentUserId),
   answer: () => renderAnswer(currentAnswerId),
   admin: () => renderAdmin(),
+  help: () => renderHelp(),
   stat: () => renderStat(currentStat),
   affinities: () => renderAffinities(),
 };
@@ -1585,6 +1604,10 @@ function topicRow(t, counts, mine, why) {
 }
 
 function renderHome() {
+  // Nouveaux venus : une carte vers l'aide, jusqu'à ce qu'ils l'ouvrent ou la ferment
+  $('help-tip').innerHTML = !readPref('helpSeen', false) && (profile?.tops_filled ?? 0) < 5
+    ? `<div class="insight help-tip" onclick="openHelp()"><span class="x" onclick="event.stopPropagation();writePref('helpSeen',true);$('help-tip').innerHTML=''">×</span>
+        <div class="ins-tag">👋 Bienvenue</div><div class="ins-text">Points, niveaux, badges, compatibilité : découvre en 1 minute comment ça marche →</div></div>` : '';
   updateHi5Badge();
   checkNewBadges();
   setAvatar($('home-av'), profile);
@@ -2212,6 +2235,52 @@ async function renderTopic(id) {
 }
 
 // ─────────────────────────────────────────
+// AIDE : comment ça marche (barème, double échelle, badges, compatibilité)
+// ─────────────────────────────────────────
+function openHelp() {
+  writePref('helpSeen', true);
+  $('help-tip').innerHTML = '';
+  pushPage('help');
+  renderHelp();
+}
+async function renderHelp() {
+  const pts = profile?.points ?? 0, lvl = myLevel();
+  const sp = sponsored[0]?.bonus_points || 100;
+  const row = (ico, txt, n) => `<div class="pts-row"><span>${ico}</span><span>${txt}</span><span class="n">${n}</span></div>`;
+  let got = new Set();
+  if (hasComments && badgeDefs.length) got = new Set((await fetchMyBadges(me.id)).map(b => b.badge));
+  $('help-body').innerHTML = `
+    <div class="slbl">💰 Gagner des points</div>
+    <div class="card" style="margin:0 16px;padding:4px 16px">
+      ${row('✋', 'Remplir un top', '+50')}
+      ${row('⭐', 'Relever le défi sponsorisé du jour', '+' + (50 + sp))}
+      ${row('✏️', 'Créer un sujet <span style="color:var(--t3)">(dès le niveau 3)</span>', '+20')}
+      ${row('🏅', 'Débloquer un badge', '+30 à +300')}
+    </div>
+    <p class="help-p" style="padding-top:10px">Modifier un top déjà rempli ne rapporte pas de points. Les high fives et commentaires que tu reçois ne donnent pas de points directement, mais font avancer tes badges. Tu as <b>${pts} points</b>.</p>
+
+    <div class="slbl">📈 Niveaux et déblocages</div>
+    <p class="help-p">Chaque niveau débloque une récompense de <b>🛡️ statut</b> et une nouvelle façon de découvrir tes <b>💞 affinités</b>. Tu es <b>niveau ${lvl} · ${LEVEL_NAMES[lvl - 1]}</b>.</p>
+    <div class="card" style="margin:0 16px;padding:4px 16px">
+      ${LEVELS.map((min, i) => `<div class="lvl-row ${i + 1 === lvl ? 'cur' : pts >= min ? '' : 'off'}">
+        <span>${pts >= min ? '✅' : '🔒'}</span><span>Niv. ${i + 1} · ${LEVEL_NAMES[i]}</span><span style="margin-left:auto">${min} pts</span></div>
+        <div class="lvl-unl">🛡️ ${UNLOCKS[i].s}<br>💞 ${UNLOCKS[i].a}</div>`).join('')}
+    </div>
+    <p class="help-p" style="padding-top:10px">Les cadres de photo apparaissent aux niveaux 6 (bronze), 8 (argent) et 10 (or). Le titre sous ton pseudo se choisit dans « ✏️ Mon profil » parmi tes badges.</p>
+
+    <div class="slbl">🏅 Les badges${got.size ? ` · ${got.size}/${badgeDefs.length}` : ''}</div>
+    ${badgeDefs.length ? `<div class="card" style="margin:0 16px;padding:4px 16px">${badgeDefs.map(d =>
+      row(d.emoji, `<b style="color:${got.has(d.code) ? 'var(--gold)' : 'var(--text)'}">${esc(d.label)}</b>${got.has(d.code) ? ' ✓' : ''}<br><span style="color:var(--t3);font-size:12px">${esc(d.descr)}</span>`, '+' + d.points)).join('')}</div>
+    <p class="help-p" style="padding-top:10px">Les badges sont attribués automatiquement, une seule fois chacun. Les interactions avec toi-même ne comptent pas, et pour les commentaires on compte des personnes différentes.</p>`
+    : '<p class="help-p">Les badges arrivent bientôt.</p>'}
+
+    <div class="slbl">💞 La compatibilité</div>
+    <p class="help-p">On compare vos tops <b>sur les sujets que vous avez remplis tous les deux</b>. Une réponse en commun compte d'autant plus qu'elle est haut placée chez vous deux (un n°1 vaut 5, un n°5 vaut 1) : deux tops identiques font 100 %, aucune réponse commune 0 %.</p>
+    <p class="help-p">Le % global est la moyenne sur vos sujets communs. Dans les classements, une personne avec beaucoup de sujets en commun passe devant un 100 % obtenu sur un seul sujet.</p>
+    <p class="help-p">80 % et plus : <b>Âmes sœurs 💞</b> · 60 % : Très proches ✨ · 40 % : Des goûts en commun 🙂 · 20 % : Quelques points communs · en dessous : Goûts opposés ⚡</p>`;
+}
+
+// ─────────────────────────────────────────
 // BADGES (attribués par la base ; l'appli ne fait qu'afficher)
 // ─────────────────────────────────────────
 const fetchMyBadges = async userId => {
@@ -2774,6 +2843,7 @@ async function renderStat(kind) {
       ...myTopics.map(t => ({ at: t.created_at, pts: 20, ico: '✏️', txt: 'Sujet créé', t })),
     ].sort((a, b) => new Date(b.at) - new Date(a.at));
     body.innerHTML = `
+      <div style="text-align:center;padding:0 16px 6px"><a style="color:var(--orange);font-size:13px;font-weight:700;cursor:pointer" onclick="openHelp()">❓ Comment gagner des points ?</a></div>
       <div class="big-counter">
         <b>${pts}</b>
         <div style="font-size:12px;color:var(--t3);font-weight:700;margin-top:6px;text-transform:uppercase;letter-spacing:.8px">points</div>
@@ -2824,7 +2894,7 @@ function pageContext() {
   if (cur === 'fill') return 'Saisie : ' + (fillTopic?.title || '');
   if (cur === 'success') return 'Résultat : ' + (fillTopic?.title || '');
   return { home: 'Accueil', search: 'Sujets', profile: 'Profil', affinities: 'Affinités', create: 'Création de sujet',
-           user: 'Profil d\'un membre', answer: 'Réponse d\'un membre', admin: 'Admin' }[cur] || cur;
+           user: 'Profil d\'un membre', answer: 'Réponse d\'un membre', admin: 'Admin', help: 'Aide' }[cur] || cur;
 }
 
 function openFeedback() {
