@@ -111,7 +111,27 @@ textarea.input{resize:none;min-height:80px}
 .card{background:var(--card);border:1px solid var(--border);border-radius:var(--r)}
 .top5-card{margin:0 16px 14px}
 .top5-card .ch{padding:13px 16px 9px;display:flex;align-items:center;gap:10px}
-.cmp-pct{font-size:17px;font-weight:900;color:var(--orange);flex-shrink:0}
+.af-pct{font-size:17px;font-weight:900;color:var(--orange);flex-shrink:0}
+.cm-row{display:flex;gap:10px;padding:10px 0;border-top:1px solid var(--border)}
+.cm-row:first-child{border-top:none}
+.cm-body{flex:1;min-width:0}
+.cm-head{font-size:12px;color:var(--t3);display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.cm-txt{font-size:14px;line-height:1.4;margin-top:3px;white-space:pre-wrap;word-break:break-word}
+.cm-tools{display:flex;gap:12px;margin-top:4px;font-size:12px;color:var(--t3)}
+.cm-tools span{cursor:pointer}
+.cm-form{display:flex;gap:8px;align-items:flex-end;margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
+.cm-form .input{flex:1;resize:none;font-size:14px;padding:10px 12px;height:auto;min-height:44px}
+.cm-form .btn{width:auto;height:44px;padding:0 16px;font-size:14px}
+#cm-list{overflow-y:auto;max-height:50vh;-webkit-overflow-scrolling:touch}
+.bdg-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:0 16px}
+.bdg{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px 6px 9px;text-align:center;cursor:pointer}
+.bdg.on{border-color:rgba(245,166,35,.35);background:linear-gradient(160deg,rgba(245,166,35,.10),var(--card))}
+.bdg .e{font-size:24px;line-height:1.1}
+.bdg .l{font-size:11px;font-weight:800;margin-top:5px;line-height:1.2}
+.bdg .d{font-size:10px;color:var(--t3);margin-top:3px}
+.bdg.off .e{filter:grayscale(1);opacity:.45}
+.bdg .bar{height:4px;background:var(--bg3);border-radius:2px;margin:6px 8px 0;overflow:hidden}
+.bdg .bar i{display:block;height:100%;background:var(--orange)}
 .match-card{margin:14px 16px 4px;background:linear-gradient(145deg,#1A1020,#0E0E14);border:1px solid rgba(255,92,46,.25);border-radius:var(--r);padding:18px;text-align:center}
 .match-pct{font-size:44px;font-weight:900;letter-spacing:-1.5px;color:var(--orange);line-height:1}
 .match-lbl{font-size:15px;font-weight:800;margin-top:6px}
@@ -591,7 +611,9 @@ textarea.input{resize:none;min-height:80px}
       <input type="checkbox" id="demo-toggle" onchange="setIncludeDemo(this.checked)">
       <div><div style="font-size:13px;font-weight:700">Inclure les profils de démo</div><div style="font-size:11px;color:var(--t3);margin-top:2px">Réponses fictives pour tester l'appli</div></div>
     </label>
+    <div id="p-badges"></div>
     <div id="p-hi5"></div>
+    <div id="p-cmts"></div>
     <div class="slbl">Mes tops</div>
     <div id="my-tops"></div>
     <div id="p-feedback"></div>
@@ -661,6 +683,7 @@ textarea.input{resize:none;min-height:80px}
       </div>
     </div>
     <div id="up-match"></div>
+    <div id="up-badges"></div>
     <div class="slbl">Ses tops</div>
     <div id="up-tops" style="padding-bottom:24px"></div>
   </div>
@@ -680,6 +703,19 @@ textarea.input{resize:none;min-height:80px}
 </div>
 
 <!-- ══════ FILTRES (modal) ══════ -->
+<div class="modal-bg" id="cm-modal" onclick="if(event.target===this)closeComments()">
+  <div class="modal-sheet">
+    <div class="mhandle"></div>
+    <div style="font-size:17px;font-weight:900">💬 Commentaires</div>
+    <div class="hint" id="cm-sub" style="margin:2px 0 10px"></div>
+    <div id="cm-list"></div>
+    <div class="cm-form">
+      <textarea id="cm-input" class="input" rows="1" maxlength="500" placeholder="Ton commentaire…" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'"></textarea>
+      <button class="btn btn-primary" id="cm-send" onclick="sendComment()">Envoyer</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-bg" id="filter-modal" onclick="if(event.target===this)closeFilters()">
   <div class="modal-sheet">
     <div class="mhandle"></div>
@@ -929,6 +965,12 @@ async function loadData() {
   sponsored = all.filter(c => t0(c) <= now && t1(c) >= now);
   sponsoredPast = all.filter(c => t1(c) < now).sort((a, b) => t0(b) - t0(a));
   sponsoredNext = all.find(c => t0(c) > now) || null;
+  // Commentaires disponibles ? (migration 013)
+  if (hasComments === null) { const cm = await sb.from('comments').select('id').limit(1); hasComments = !cm.error; }
+  if (hasComments && !badgeDefs.length) {
+    const { data } = await sb.from('badges').select('*').order('sort');
+    badgeDefs = data || [];
+  }
   lastLoad = Date.now();
   suggCache = null;   // les suggestions dépendent des réponses
 }
@@ -936,6 +978,9 @@ async function loadData() {
 // Migration 004 (films / séries TMDB) exécutée ? Détecté au premier chargement.
 let hasMedia = null;
 let sponsored = [];   // défis sponsorisés en cours
+let hasComments = null;   // migration 013 exécutée ? (commentaires + badges)
+let badgeDefs = [];       // catalogue des badges
+const CMT_SEL = () => hasComments ? ',comments(count)' : '';
 let sponsoredPast = [];   // défis passés (60 jours), du plus récent au plus ancien
 let sponsoredNext = null; // prochain défi (teaser)
 const sponsoredFor = topicId => sponsored.find(c => c.topic_id === topicId) || null;
@@ -1503,6 +1548,7 @@ function topicRow(t, counts, mine, why) {
 
 function renderHome() {
   updateHi5Badge();
+  checkNewBadges();
   setAvatar($('home-av'), profile);
   setHomeTab(homeTab);
   const counts = countByTopic();
@@ -1562,7 +1608,7 @@ async function renderActivity() {
   const box = $('home-activity');
   box.innerHTML = LOADER;
   const { data, error } = await sb.from('tops')
-    .select(`id,topic_id,user_id,created_at,profiles!tops_user_id_fkey(id,name,handle,country,birth_year,gender,is_demo),likes(user_id),top_items(${ITEM_COLS()})`)
+    .select(`id,topic_id,user_id,created_at,profiles!tops_user_id_fkey(id,name,handle,country,birth_year,gender,is_demo),likes(user_id),top_items(${ITEM_COLS()})${CMT_SEL()}`)
     .neq('user_id', me.id)
     .order('created_at', { ascending: false })
     .limit(60);
@@ -1597,6 +1643,7 @@ function topCard(t, withTopic) {
     </ul>
     <div class="ca">
       <button class="act ${liked ? 'liked' : ''}" data-n="${likes.length}" data-h="${esc(p.handle)}" title="High five !" onclick="toggleLike('${t.id}',this)">✋ ${likes.length}</button>
+      ${hasComments ? `<button class="act" data-ctop="${t.id}" title="Commentaires" onclick="openComments('${t.id}')">💬 ${t.comments?.[0]?.count || 0}</button>` : ''}
       ${withTopic ? (done
         ? `<button class="act" style="margin-left:auto" onclick="openTopic('${t.topic_id}')">✓ Comparer</button>`
         : `<button class="act-reply" onclick="openFillById('${t.topic_id}')">Faire le mien →</button>`) : ''}
@@ -1617,6 +1664,7 @@ async function toggleLike(topId, btn) {
     ? await sb.from('likes').delete().eq('top_id', topId).eq('user_id', me.id)
     : await sb.from('likes').insert({ top_id: topId, user_id: me.id });
   if (error) toast('Erreur : ' + error.message);
+  else if (!liked) checkNewBadges();
 }
 
 // ─────────────────────────────────────────
@@ -2010,7 +2058,7 @@ async function renderTopic(id) {
   try {
     [items, { data: recent }] = await Promise.all([
       fetchTopicItems(id),
-      sb.from('tops').select('id,topic_id,user_id,created_at,profiles!tops_user_id_fkey(id,name,handle,country,birth_year,gender,is_demo),likes(user_id)')
+      sb.from('tops').select('id,topic_id,user_id,created_at,profiles!tops_user_id_fkey(id,name,handle,country,birth_year,gender,is_demo),likes(user_id)' + CMT_SEL())
         .eq('topic_id', id).neq('user_id', me.id).order('created_at', { ascending: false }).limit(40),
     ]);
   } catch (e) {
@@ -2026,7 +2074,10 @@ async function renderTopic(id) {
     const myItems = items.filter(it => it.top_id === mineAns.id).sort((a, b) => a.rank - b.rank);
     myItems.forEach(it => myKeys.add(itemKey(it)));
     $('tp-mine').innerHTML = `<div class="block"><div class="block-lbl">Mon top 5 <span class="count-pill" id="tp-mine-likes">✋ …</span></div><div class="hi5-from" id="tp-mine-from"></div>
-      <ul class="clist" style="padding:0">${myItems.map(it => `<li><div class="rank ${it.rank === 1 ? 'r1' : ''}">${it.rank}</div>${thumb(it)}${esc(itemLabel(it))}</li>`).join('')}</ul></div>`;
+      <ul class="clist" style="padding:0">${myItems.map(it => `<li><div class="rank ${it.rank === 1 ? 'r1' : ''}">${it.rank}</div>${thumb(it)}${esc(itemLabel(it))}</li>`).join('')}</ul>
+      ${hasComments ? `<button class="act" style="margin-top:10px" data-ctop="${mineAns.id}" onclick="openComments('${mineAns.id}')">💬 Commentaires</button>` : ''}</div>`;
+    if (hasComments) sb.from('comments').select('id', { count: 'exact', head: true }).eq('top_id', mineAns.id)
+      .then(({ count }) => setCommentCount(mineAns.id, count || 0));
     sb.from('likes').select('created_at,profiles!likes_user_id_fkey(id,handle)').eq('top_id', mineAns.id).order('created_at', { ascending: false })
       .then(({ data }) => {
         const list = data || [];
@@ -2052,6 +2103,172 @@ async function renderTopic(id) {
   $('tp-recent').innerHTML = rows.length
     ? rows.map(r => topCard({ ...r, top_items: byTop[r.id] || [] }, false)).join('')
     : '<div style="font-size:13px;color:var(--t3);padding:0 20px 16px">Aucune réponse pour l\'instant.</div>';
+}
+
+// ─────────────────────────────────────────
+// BADGES (attribués par la base ; l'appli ne fait qu'afficher)
+// ─────────────────────────────────────────
+const fetchMyBadges = async userId => {
+  const { data } = await sb.from('user_badges').select('badge,created_at').eq('user_id', userId);
+  return data || [];
+};
+// Nouveaux badges depuis la dernière vérification : on les annonce une fois
+async function checkNewBadges() {
+  if (!hasComments || !badgeDefs.length || !me) return;
+  const got = (await fetchMyBadges(me.id)).map(b => b.badge);
+  const known = readPref('badgesKnown', null);
+  writePref('badgesKnown', got);
+  if (!known) { if (got.length) toast(`🏅 Tu as déjà débloqué ${got.length} badge${got.length > 1 ? 's' : ''} ! Va voir ton profil`); return; }
+  const fresh = got.filter(b => !known.includes(b)).map(b => badgeDefs.find(d => d.code === b)).filter(Boolean);
+  if (fresh.length === 1) toast(`🏅 Badge débloqué : ${fresh[0].emoji} ${fresh[0].label} (+${fresh[0].points} pts)`);
+  else if (fresh.length > 1) toast(`🏅 ${fresh.length} badges débloqués (+${fresh.reduce((x, d) => x + d.points, 0)} pts) !`);
+}
+let badgesAll = false;
+function badgeInfo(code) {
+  const d = badgeDefs.find(x => x.code === code);
+  if (d) toast(`${d.emoji} ${d.label} : ${d.descr} · +${d.points} pts`);
+}
+// Vitrine : badges obtenus ; sur mon profil, aussi les suivants avec leur progression
+async function renderBadges(boxId, userId) {
+  const box = $(boxId);
+  if (!hasComments || !badgeDefs.length) { box.innerHTML = ''; return; }
+  const mine = userId === me.id;
+  const [got, stats] = await Promise.all([
+    fetchMyBadges(userId),
+    mine ? sb.rpc('badge_stats', { uid: userId }).then(r => r.data || {}) : Promise.resolve({}),
+  ]);
+  const has = new Set(got.map(b => b.badge));
+  if (!mine && !has.size) { box.innerHTML = ''; return; }
+  let defs = badgeDefs.filter(d => has.has(d.code));
+  // À débloquer : du plus proche au plus lointain (un seul palier par famille)
+  const next = mine ? badgeDefs.filter(d => !has.has(d.code))
+    .filter((d, i, arr) => arr.findIndex(x => x.metric === d.metric) === i)
+    .map(d => ({ ...d, prog: Math.min(1, (stats[d.metric] || 0) / d.threshold) }))
+    .sort((a, b) => b.prog - a.prog) : [];
+  const shown = badgesAll ? [...defs, ...next] : [...defs, ...next].slice(0, 6);
+  const cell = d => {
+    const on = has.has(d.code);
+    const v = stats[d.metric] || 0;
+    return `<div class="bdg ${on ? 'on' : 'off'}" onclick="badgeInfo('${d.code}')">
+      <div class="e">${d.emoji}</div><div class="l">${esc(d.label)}</div>
+      ${on ? `<div class="d">+${d.points} pts</div>` : `<div class="bar"><i style="width:${Math.round(d.prog * 100)}%"></i></div><div class="d">${Math.min(v, d.threshold)}/${d.threshold}</div>`}</div>`;
+  };
+  const total = defs.length + next.length;
+  box.innerHTML = `<div class="slbl">🏅 Badges · ${has.size}/${badgeDefs.length}${mine && total > 6
+      ? ` <a onclick="badgesAll=!badgesAll;renderBadges('${boxId}','${userId}')">${badgesAll ? 'Réduire' : 'Voir tout →'}</a>` : ''}</div>
+    <div class="bdg-grid">${shown.map(cell).join('')}</div>`;
+}
+
+// ─────────────────────────────────────────
+// COMMENTAIRES publics sous le top d'une personne
+// ─────────────────────────────────────────
+let cmTop = null;   // { id, user_id, topic_id, handle }
+function setCommentCount(topId, n) {
+  document.querySelectorAll(`[data-ctop="${topId}"]`).forEach(b => {
+    b.textContent = b.closest('#tp-mine') ? `💬 ${n} commentaire${n > 1 ? 's' : ''}` : '💬 ' + n;
+  });
+}
+async function openComments(topId) {
+  $('cm-modal').classList.add('open');
+  $('cm-list').innerHTML = LOADER;
+  $('cm-sub').textContent = '';
+  const { data: t } = await sb.from('tops').select('id,user_id,topic_id,profiles!tops_user_id_fkey(handle)').eq('id', topId).maybeSingle();
+  if (!t) { $('cm-list').innerHTML = '<div class="empty">Top introuvable</div>'; return; }
+  cmTop = { id: t.id, user_id: t.user_id, topic_id: t.topic_id, handle: t.profiles?.handle || '?' };
+  const topic = topicById(t.topic_id);
+  $('cm-sub').textContent = (t.user_id === me.id ? 'Ton top' : 'Le top de ' + cmTop.handle) + (topic ? ' · ' + topic.title.replace(/^Top 5 /, '') : '');
+  renderComments();
+}
+function closeComments() { $('cm-modal').classList.remove('open'); cmTop = null; }
+async function renderComments() {
+  if (!cmTop) return;
+  const topId = cmTop.id;
+  const { data, error } = await sb.from('comments').select('id,body,created_at,user_id,profiles!comments_user_id_fkey(id,handle)')
+    .eq('top_id', topId).order('created_at');
+  if (!cmTop || cmTop.id !== topId) return;
+  if (error) { $('cm-list').innerHTML = `<div class="empty">Erreur : ${esc(error.message)}</div>`; return; }
+  const list = data || [];
+  setCommentCount(topId, list.length);
+  const canDel = c => c.user_id === me.id || cmTop.user_id === me.id || profile?.is_admin;
+  $('cm-list').innerHTML = list.length ? list.map(c => {
+    const p = c.profiles || {};
+    return `<div class="cm-row">
+      <div class="cav" style="background:${colorFor(p.handle)}" onclick="closeComments();openUser('${p.id}')">${initialOf(p)}</div>
+      <div class="cm-body">
+        <div class="cm-head"><span class="who" onclick="closeComments();openUser('${p.id}')">${esc(p.handle || '?')}</span>${c.user_id === cmTop.user_id ? '<span>· auteur du top</span>' : ''}<span>· ${timeAgo(c.created_at)}</span></div>
+        <div class="cm-txt">${esc(c.body)}</div>
+        <div class="cm-tools">${canDel(c) ? `<span onclick="deleteComment('${c.id}')">🗑 Supprimer</span>` : ''}${c.user_id !== me.id ? `<span onclick="reportComment('${c.id}')">🚩 Signaler</span>` : ''}</div>
+      </div></div>`;
+  }).join('') : '<div class="hint" style="padding:8px 0">Aucun commentaire pour l\'instant. Lance le débat !</div>';
+  $('cm-list').scrollTop = $('cm-list').scrollHeight;
+}
+async function sendComment() {
+  const inp = $('cm-input');
+  const body = inp.value.trim();
+  if (!cmTop || !body) return;
+  const btn = $('cm-send');
+  btn.disabled = true;
+  const { error } = await sb.from('comments').insert({ top_id: cmTop.id, user_id: me.id, body });
+  btn.disabled = false;
+  if (error) return toast(error.message.includes('Doucement') ? error.message : 'Erreur : ' + error.message);
+  inp.value = ''; inp.style.height = '';
+  renderComments();
+  checkNewBadges();
+}
+async function deleteComment(id) {
+  if (!confirm('Supprimer ce commentaire ?')) return;
+  const { error } = await sb.from('comments').delete().eq('id', id);
+  if (error) return toast('Erreur : ' + error.message);
+  toast('Commentaire supprimé');
+  renderComments();
+}
+async function reportComment(id) {
+  const { data: c } = await sb.from('comments').select('body,profiles!comments_user_id_fkey(handle)').eq('id', id).maybeSingle();
+  if (!c) return;
+  if (!confirm('Signaler ce commentaire à l\'équipe HiFives ?')) return;
+  const topic = topicById(cmTop?.topic_id);
+  const { error } = await sb.from('feedback').insert({
+    user_id: me.id, kind: 'signalement', page: 'comment:' + id,
+    message: `Commentaire de ${c.profiles?.handle || '?'} sous le top de ${cmTop?.handle || '?'}${topic ? ' (' + topic.title + ')' : ''} : « ${c.body} »`.slice(0, 2000),
+  });
+  toast(error ? 'Erreur : ' + error.message : '🚩 Merci, le commentaire a été signalé');
+}
+// Admin : supprimer le commentaire visé par un signalement
+async function adminDeleteComment(id, fbId) {
+  if (!confirm('Supprimer définitivement ce commentaire ?')) return;
+  const { error } = await sb.from('comments').delete().eq('id', id);
+  if (error) return toast('Erreur : ' + error.message);
+  await sb.from('feedback').update({ status: 'traite' }).eq('id', fbId);
+  toast('Commentaire supprimé');
+  renderAdmin();
+}
+// Commentaires reçus sur mes tops (les miens exclus)
+async function fetchCommentsReceived(limit) {
+  if (!hasComments) return [];
+  const { data, error } = await sb.from('comments')
+    .select('id,body,created_at,top_id,user_id,profiles!comments_user_id_fkey(id,handle,is_demo),tops!inner(topic_id,user_id)')
+    .eq('tops.user_id', me.id).neq('user_id', me.id)
+    .order('created_at', { ascending: false }).limit(limit);
+  if (error) throw error;
+  return (data || []).filter(c => includeDemo || !c.profiles?.is_demo);
+}
+async function renderCommentsReceived() {
+  const box = $('p-cmts');
+  if (!hasComments) { box.innerHTML = ''; return; }
+  let list;
+  try { list = await fetchCommentsReceived(20); } catch (e) { box.innerHTML = ''; return; }
+  const seen = readPref('cmSeen', '');
+  writePref('cmSeen', new Date().toISOString());
+  if (!list.length) { box.innerHTML = ''; return; }
+  box.innerHTML = '<div class="slbl">💬 Commentaires reçus</div>' + list.slice(0, 3).map(c => {
+    const p = c.profiles || {};
+    const t = topicById(c.tops?.topic_id);
+    return `<div class="hi5-row ${seen && c.created_at > seen ? 'new' : ''}" style="cursor:pointer" onclick="openComments('${c.top_id}')">
+      <div class="cav" style="background:${colorFor(p.handle)}" onclick="event.stopPropagation();openUser('${p.id}')">${initialOf(p)}</div>
+      <div class="hi5-txt"><span class="who">${esc(p.handle || '?')}</span><span class="what"> sur ${esc(t ? t.title.replace(/^Top 5 /, 'ton top 5 ') : 'ton top')}</span>
+        <div class="topic-meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">« ${esc(c.body)} »</div></div>
+      <div style="font-size:18px">💬</div></div>`;
+  }).join('');
 }
 
 // ─────────────────────────────────────────
@@ -2083,8 +2300,9 @@ async function updateHi5Badge() {
   const b = $('hi5-badge');
   if (!seen) { writePref('hi5Seen', new Date().toISOString()); b.style.display = 'none'; return; }
   try {
-    const list = await fetchHi5Received(50);
-    const n = list.filter(l => l.created_at > seen).length;
+    const [list, cms] = await Promise.all([fetchHi5Received(50), fetchCommentsReceived(50).catch(() => [])]);
+    const cmSeen = readPref('cmSeen', seen);
+    const n = list.filter(l => l.created_at > seen).length + cms.filter(c => c.created_at > cmSeen).length;
     b.textContent = n > 9 ? '9+' : n;
     b.style.display = n ? 'flex' : 'none';
   } catch (e) { b.style.display = 'none'; }
@@ -2143,13 +2361,13 @@ async function renderTwins() {
     ? twins.map(x => `<div class="hi5-row" style="cursor:pointer" onclick="openUser('${x.u}')">
         <div class="cav" style="background:${colorFor(x.handle)}">${initialOf({ handle: x.handle })}</div>
         <div class="hi5-txt"><span class="who">${esc(x.handle)}</span><div class="topic-meta">${compatLabel(x.pct)} · ${pl(x.rows.length, 'sujet')} en commun</div></div>
-        <div class="cmp-pct">${x.pct} %</div></div>`).join('')
+        <div class="af-pct">${x.pct} %</div></div>`).join('')
       + '<div class="hint" style="padding:2px 20px 0">Le classement tient compte du nombre de sujets en commun. Touche une personne pour voir votre face-à-face.</div>'
     : '<div class="hint" style="padding:0 20px">Pas encore de réponse commune avec d\'autres personnes. Remplis des sujets populaires pour te comparer !</div>')
     + (soul.length ? '<div class="slbl">💞 Tes âmes sœurs par thème</div>' + soul.map(x => `<div class="hi5-row" style="cursor:pointer" onclick="openUser('${x.u}')">
         <div style="font-size:22px;width:34px;text-align:center">${CAT_ICON[x.c] || '⭐'}</div>
         <div class="hi5-txt"><strong>${esc(x.c)}</strong><div class="topic-meta"><span class="who">${esc(x.handle)}</span> · sur ${pl(x.n, 'sujet')}</div></div>
-        <div class="cmp-pct">${x.pct} %</div></div>`).join('') : '');
+        <div class="af-pct">${x.pct} %</div></div>`).join('') : '');
 }
 
 // 💞 Face-à-face sur le profil d'une personne : compatibilité, réponses communes, désaccords
@@ -2374,7 +2592,8 @@ async function renderStat(kind) {
     const filled = profile.tops_filled ?? 0;
     const created = profile.tops_created ?? 0;
     const bonus = profile.bonus_points ?? 0;
-    const other = pts - filled * 50 - created * 20 - bonus;
+    const badgePts = profile.badge_points ?? 0;
+    const other = pts - filled * 50 - created * 20 - bonus - badgePts;
     // Historique : un événement par top rempli (+50) et par sujet créé (+20)
     const events = [
       ...myAnswers.map(a => {
@@ -2399,6 +2618,7 @@ async function renderStat(kind) {
         <div class="pts-row"><span>✋</span><span>Tops remplis <span style="color:var(--t3)">· ${filled} × 50</span></span><span class="n">${filled * 50}</span></div>
         <div class="pts-row"><span>✏️</span><span>Sujets créés <span style="color:var(--t3)">· ${created} × 20</span></span><span class="n">${created * 20}</span></div>
         ${bonus ? `<div class="pts-row"><span>⭐</span><span>Bonus défis sponsorisés</span><span class="n">${bonus}</span></div>` : ''}
+        ${badgePts ? `<div class="pts-row"><span>🏅</span><span>Badges</span><span class="n">${badgePts}</span></div>` : ''}
         ${other ? `<div class="pts-row"><span>🎁</span><span>Autres</span><span class="n">${other}</span></div>` : ''}
         <div class="pts-row" style="color:var(--orange)"><span>⭐</span><strong>Total</strong><span class="n">${pts}</span></div>
       </div>
@@ -2421,7 +2641,7 @@ async function renderStat(kind) {
 // ─────────────────────────────────────────
 // RETOURS UTILISATEURS
 // ─────────────────────────────────────────
-const FB_KINDS  = { bug: '🐞 Bug', idee: '💡 Idée', avis: '💬 Avis' };
+const FB_KINDS  = { bug: '🐞 Bug', idee: '💡 Idée', avis: '💬 Avis', signalement: '🚩 Signalement' };
 const FB_STATUS = { nouveau: '🆕 Nouveau', en_cours: '⏳ En cours', traite: '✅ Traité', rejete: '🗂️ Classé' };
 let fbKind = 'avis';
 let fbRating = null;
@@ -2449,7 +2669,7 @@ function openFeedback() {
 function closeFeedback() { $('fb-modal').classList.remove('open'); }
 
 function renderFbControls() {
-  $('fb-kinds').innerHTML = Object.entries(FB_KINDS).map(([k, l]) =>
+  $('fb-kinds').innerHTML = Object.entries(FB_KINDS).filter(([k]) => k !== 'signalement').map(([k, l]) =>
     `<div class="copt ${k === fbKind ? 'sel' : ''}" onclick="fbKind='${k}';renderFbControls()">${l}</div>`).join('');
   $('fb-stars').innerHTML = [1, 2, 3, 4, 5].map(n =>
     `<span class="star ${fbRating >= n ? 'on' : ''}" onclick="fbRating=(fbRating===${n}?null:${n});renderFbControls()">★</span>`).join('');
@@ -2539,6 +2759,7 @@ async function renderAdmin() {
         ${f.page ? `<span>· 📍 ${esc(f.page)}</span>` : ''}
       </div>
       <div class="fb-msg">${esc(f.message)}</div>
+      ${f.kind === 'signalement' && /^comment:[0-9a-f-]{36}$/.test(f.page || '') ? `<button class="btn btn-ghost" style="height:38px;font-size:13px;margin-top:8px" onclick="adminDeleteComment('${f.page.slice(8)}','${f.id}')">🗑 Supprimer le commentaire signalé</button>` : ''}
       ${f.user_agent ? `<div class="hint" style="margin-top:6px;font-size:10px">${esc(f.user_agent)}</div>` : ''}
       <div class="fb-status">${Object.entries(FB_STATUS).map(([s, l]) =>
         `<div class="copt ${s === f.status ? 'sel' : ''}" onclick="setFeedbackStatus('${f.id}','${s}')">${l}</div>`).join('')}</div>
@@ -2573,7 +2794,7 @@ function openAnswer(topId) {
 async function renderAnswer(topId) {
   $('an-body').innerHTML = LOADER;
   const { data: t } = await sb.from('tops')
-    .select(`id,topic_id,user_id,created_at,profiles!tops_user_id_fkey(id,name,handle,is_demo),likes(user_id),top_items(${ITEM_COLS()})`)
+    .select(`id,topic_id,user_id,created_at,profiles!tops_user_id_fkey(id,name,handle,is_demo),likes(user_id),top_items(${ITEM_COLS()})${CMT_SEL()}`)
     .eq('id', topId).maybeSingle();
   if (currentAnswerId !== topId) return;
   if (!t) { $('an-body').innerHTML = '<div class="empty">Réponse introuvable</div>'; return; }
@@ -2903,6 +3124,7 @@ async function publishFill() {
       throw itemsErr;
     }
     await Promise.all([loadData(), refreshProfile()]);
+    checkNewBadges();
     replacePage('success');
     renderSuccess(fillTopic, vals, isNew);
   } catch (err) {
@@ -3170,6 +3392,8 @@ async function renderProfile() {
   $('my-tops').innerHTML = myTopRows(me.id, likes);
   renderMyFeedback();
   renderHi5Received();
+  renderCommentsReceived();
+  renderBadges('p-badges', me.id);
 }
 
 function openEditProfile() {
@@ -3267,6 +3491,7 @@ function openUser(userId) {
 async function renderUser(userId) {
   $('up-handle').textContent = '…';
   $('up-match').innerHTML = '';
+  $('up-badges').innerHTML = '';
   $('up-tops').innerHTML = LOADER;
   const { data: p } = await sb.from('profiles').select('*').eq('id', userId).maybeSingle();
   if (currentUserId !== userId) return;
@@ -3275,6 +3500,7 @@ async function renderUser(userId) {
   $('up-handle').textContent = p.handle + (p.is_demo ? ' · démo' : '');
   $('up-level').textContent = `Niv. ${lvl} · ${LEVEL_NAMES[lvl - 1]}`;
   renderMatch(userId, p);
+  renderBadges('up-badges', userId);
   const likes = await fetchLikeCounts(userId);
   if (currentUserId !== userId) return;
   $('up-tops').innerHTML = myTopRows(userId, likes);
