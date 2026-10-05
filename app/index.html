@@ -557,6 +557,8 @@ textarea.input{resize:none;min-height:80px}
       <div id="sc-cmp"></div>
     </div>
     <div style="display:flex;flex-direction:column;gap:10px">
+      <button class="btn btn-primary" id="sc-invite" style="display:none"></button>
+      <button class="btn btn-ghost" id="sc-share">📤 Partager mon top (WhatsApp, SMS…)</button>
       <button class="btn btn-primary" id="sc-next"></button>
       <div class="row">
         <button class="btn btn-ghost" style="flex:1" id="sc-see">Voir le classement</button>
@@ -1431,6 +1433,7 @@ async function onAuthSuccess(user) {
   if (!profile) return showSetupError({ message: 'Profil introuvable pour ce compte.' });
   history.replaceState({ hf: 1 }, '');
   navTo('home');
+  openInvite();
 }
 
 function showSetupError(e) {
@@ -2075,7 +2078,9 @@ async function renderTopic(id) {
     myItems.forEach(it => myKeys.add(itemKey(it)));
     $('tp-mine').innerHTML = `<div class="block"><div class="block-lbl">Mon top 5 <span class="count-pill" id="tp-mine-likes">✋ …</span></div><div class="hi5-from" id="tp-mine-from"></div>
       <ul class="clist" style="padding:0">${myItems.map(it => `<li><div class="rank ${it.rank === 1 ? 'r1' : ''}">${it.rank}</div>${thumb(it)}${esc(itemLabel(it))}</li>`).join('')}</ul>
-      ${hasComments ? `<button class="act" style="margin-top:10px" data-ctop="${mineAns.id}" onclick="openComments('${mineAns.id}')">💬 Commentaires</button>` : ''}</div>`;
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+        ${hasComments ? `<button class="act" data-ctop="${mineAns.id}" onclick="openComments('${mineAns.id}')">💬 Commentaires</button>` : ''}
+        <button class="act" onclick="shareTop('${id}')">📤 Partager</button></div></div>`;
     if (hasComments) sb.from('comments').select('id', { count: 'exact', head: true }).eq('top_id', mineAns.id)
       .then(({ count }) => setCommentCount(mineAns.id, count || 0));
     sb.from('likes').select('created_at,profiles!likes_user_id_fkey(id,handle)').eq('top_id', mineAns.id).order('created_at', { ascending: false })
@@ -3142,6 +3147,15 @@ async function renderSuccess(topic, myVals, isNew) {
   $('sc-pts-box').style.display = isNew ? 'flex' : 'none';
   $('sc-pts').textContent = '+' + (50 + (isNew && sponsoredFor(topic.id) ? sponsoredFor(topic.id).bonus_points : 0));
   $('sc-cmp').innerHTML = LOADER;
+  $('sc-share').onclick = () => shareTop(topic.id);
+  // Venu par un lien de partage : direction le face-à-face avec la personne qui l'a envoyé
+  const inv = $('sc-invite');
+  if (invite && invite.t === topic.id && invite.de && invite.de !== me.id) {
+    const from = invite.de;
+    inv.style.display = '';
+    inv.textContent = '💞 Voir ta compatibilité avec ' + (invite.handle || 'ton ami');
+    inv.onclick = () => { invite = null; openUser(from); };
+  } else inv.style.display = 'none';
   $('sc-see').onclick = () => {
     // Si on venait déjà de la page de ce sujet, on y retourne simplement
     if (stack[stack.length - 2] === 'topic' && currentTopicId === topic.id) return goBack();
@@ -3509,6 +3523,53 @@ async function renderUser(userId) {
 // ─────────────────────────────────────────
 // BOOT
 // ─────────────────────────────────────────
+// ─────────────────────────────────────────
+// PARTAGE d'un top (WhatsApp, SMS…) et liens d'invitation ?t=<sujet>&de=<personne>
+// ─────────────────────────────────────────
+let invite = null;   // { t, de, handle }
+(function readInvite() {
+  try {
+    const q = new URLSearchParams(location.search);
+    const t = q.get('t'), de = q.get('de');
+    const uuid = /^[0-9a-f-]{36}$/;
+    if (t && uuid.test(t)) localStorage.setItem('hf_invite', JSON.stringify({ t, de: de && uuid.test(de) ? de : null }));
+    if (q.has('t')) history.replaceState(null, '', location.pathname);
+    invite = JSON.parse(localStorage.getItem('hf_invite') || 'null');
+  } catch (e) { invite = null; }
+})();
+async function openInvite() {
+  if (!invite) return;
+  try { localStorage.removeItem('hf_invite'); } catch (e) {}
+  const t = await ensureTopic(invite.t);
+  if (!t) { invite = null; return; }
+  if (invite.de && invite.de !== me.id) {
+    const { data } = await sb.from('profiles').select('handle').eq('id', invite.de).maybeSingle();
+    invite.handle = data?.handle || null;
+  }
+  if (myAnswer(t.id)) {
+    // Déjà rempli : on va directement au face-à-face (ou au sujet)
+    const from = invite.de;
+    invite = null;
+    if (from && from !== me.id) openUser(from); else openTopic(t.id);
+  } else {
+    openFill(t);
+    if (invite.handle) toast(`👋 ${invite.handle} t'invite à remplir ce top pour vous comparer !`);
+  }
+}
+async function shareTop(topicId) {
+  const t = topicById(topicId), mine = myAnswer(topicId);
+  if (!t || !mine) return;
+  const { data } = await sb.from('top_items').select(ITEM_COLS()).eq('top_id', mine.id).order('rank');
+  const url = `${location.origin}${location.pathname}?t=${topicId}&de=${me.id}`;
+  const text = `✋ Mon ${t.title.replace(/^Top 5/, 'top 5')} :\n`
+    + (data || []).map(it => `${it.rank}. ${itemLabel(it)}`).join('\n')
+    + `\n\nEt toi ? Fais le tien et découvre si on est compatibles 👉 ${url}`;
+  try {
+    if (navigator.share) return await navigator.share({ text });
+  } catch (e) { if (e.name === 'AbortError') return; }
+  window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
+}
+
 async function boot() {
   fillProfileSelects('su-');
   fillProfileSelects('ed-');
