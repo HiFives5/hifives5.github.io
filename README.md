@@ -39,6 +39,7 @@ Les évolutions se font par des fichiers `supabase/migrations/NNN_*.sql`, à ex�
 - `011_defis_sponsorises_quotidiens.sql` : un défi sponsorisé différent chaque jour (30 thèmes d'exemple, programmés sur 365 jours ; relancer pour prolonger).
 - `012_musique_deezer.sql` : la musique passe sur Deezer (résultats triés par popularité, pochettes) ; MusicBrainz reste en secours et les anciennes réponses restent valables.
 - `013_commentaires_badges.sql` : commentaires publics sous les tops (suppression : auteur, propriétaire du top, admin), signalements dans la page admin, badges attribués par la base avec bonus de points (rattrapage des exploits déjà réalisés).
+- `014_niveaux_deblocages.sql` : échelle à 10 niveaux ; garde-fous vérifiés par la base (commenter : niveau 2, créer un sujet : niveau 3) ; titre sous le pseudo (un de ses badges, niveau 4).
 
 ### Défis sponsorisés
 Table Editor → `sponsored_challenges` (modifiable par les admins uniquement) :

@@ -132,6 +132,14 @@ textarea.input{resize:none;min-height:80px}
 .bdg.off .e{filter:grayscale(1);opacity:.45}
 .bdg .bar{height:4px;background:var(--bg3);border-radius:2px;margin:6px 8px 0;overflow:hidden}
 .bdg .bar i{display:block;height:100%;background:var(--orange)}
+.lock-box{margin:0 16px 12px;padding:14px 16px;border:1px dashed var(--b2);border-radius:var(--rsm);background:var(--card);font-size:13px;color:var(--t2);line-height:1.45}
+.lock-box b{color:var(--text)}
+.lock-sub{font-size:11px;color:var(--t3);margin-top:4px}
+.lvl-unl{font-size:11px;color:var(--t3);margin:-4px 0 8px 30px;line-height:1.5}
+.lvl-row.off + .lvl-unl{opacity:.6}
+.p-av.fr-bronze{box-shadow:0 0 0 3px #B87333,0 6px 20px rgba(184,115,51,.35)}
+.p-av.fr-silver{box-shadow:0 0 0 3px #C9CED6,0 6px 20px rgba(201,206,214,.35)}
+.p-av.fr-gold{box-shadow:0 0 0 3px #F5C542,0 6px 22px rgba(245,197,66,.45)}
 .match-card{margin:14px 16px 4px;background:linear-gradient(145deg,#1A1020,#0E0E14);border:1px solid rgba(255,92,46,.25);border-radius:var(--r);padding:18px;text-align:center}
 .match-pct{font-size:44px;font-weight:900;letter-spacing:-1.5px;color:var(--orange);line-height:1}
 .match-lbl{font-size:15px;font-weight:800;margin-top:6px}
@@ -579,6 +587,7 @@ textarea.input{resize:none;min-height:80px}
         <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
           <div class="badge-pill" id="p-country"></div>
           <div class="badge-pill badge-orange" id="p-level-badge"></div>
+          <div class="badge-pill" id="p-title" style="display:none;color:var(--gold)"></div>
         </div>
       </div>
     </div>
@@ -671,6 +680,7 @@ textarea.input{resize:none;min-height:80px}
           <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
             <div class="badge-pill" id="up-country"></div>
             <div class="badge-pill badge-orange" id="up-level"></div>
+            <div class="badge-pill" id="up-title" style="display:none;color:var(--gold)"></div>
           </div>
         </div>
       </div>
@@ -711,6 +721,7 @@ textarea.input{resize:none;min-height:80px}
     <div style="font-size:17px;font-weight:900">💬 Commentaires</div>
     <div class="hint" id="cm-sub" style="margin:2px 0 10px"></div>
     <div id="cm-list"></div>
+    <div id="cm-lock"></div>
     <div class="cm-form">
       <textarea id="cm-input" class="input" rows="1" maxlength="500" placeholder="Ton commentaire…" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'"></textarea>
       <button class="btn btn-primary" id="cm-send" onclick="sendComment()">Envoyer</button>
@@ -794,6 +805,7 @@ textarea.input{resize:none;min-height:80px}
     <p class="hint" style="margin-bottom:16px">Pays, âge et genre servent uniquement aux filtres et aux statistiques anonymes.</p>
     <div class="mgroup">Petit mot <span id="ed-bio-n" style="color:var(--t3);font-weight:600"></span></div>
     <textarea id="ed-bio" class="input" maxlength="160" rows="2" placeholder="Une phrase sur toi…" style="height:auto;padding:12px 14px;margin-bottom:14px;resize:none" oninput="$('ed-bio-n').textContent=this.value.length+'/160'"></textarea>
+    <div id="ed-title-box"></div>
     <div class="mgroup">Retrouve-moi sur</div>
     <div id="ed-links" style="margin-bottom:6px"></div>
     <p class="hint" style="margin-bottom:16px">Entre seulement ton identifiant (sans @ ni lien).</p>
@@ -845,8 +857,21 @@ const CAT_ICON  = Object.fromEntries(CATEGORIES.map(c => [c.k, c.i]));
 const COUNTRIES = ['🇫🇷 France', '🇧🇪 Belgique', '🇨🇭 Suisse', '🇨🇦 Canada', '🇬🇧 Royaume-Uni', '🇺🇸 États-Unis', '🇪🇸 Espagne', '🇮🇹 Italie', '🇩🇪 Allemagne', '🌍 Autre'];
 const GENDERS   = ['Homme', 'Femme', 'Autre'];
 const AGE_BANDS = ['Moins de 25', '25–34', '35–44', '45+'];
-const LEVELS    = [0, 100, 300, 600, 1000];
-const LEVEL_NAMES = ['Débutant', 'Explorateur', 'Curieux', 'Créateur', 'Expert'];
+const LEVELS    = [0, 150, 400, 800, 1500, 2500, 4000, 6500, 10000, 15000];
+const LEVEL_NAMES = ['Débutant', 'Curieux', 'Explorateur', 'Connaisseur', 'Passionné', 'Critique', 'Expert', 'Référence', 'Maître', 'Légende'];
+// Double échelle : ce que chaque niveau débloque côté statut (s) et côté affinités (a)
+const UNLOCKS = [
+  { s: 'Remplir des tops, high fives', a: 'Toi vs la communauté · ta compatibilité avec qui t\'a invité' },
+  { s: '💬 Commenter les tops', a: '🔎 « Qui a aussi mis… »' },
+  { s: '✏️ Créer des sujets', a: '💞 Compatibilité et face-à-face sur tous les profils' },
+  { s: '✨ Un titre sous ton pseudo', a: '👯 Tes 3 meilleures affinités' },
+  { s: '✉️ Messagerie (bientôt)', a: '💞 Âmes sœurs par thème · ⚡ vos désaccords' },
+  { s: '✨ Cadre bronze', a: '👯 Tes 10 meilleures affinités · 🙃 tes opposés (bientôt)' },
+  { s: '🗳️ Vote du thème sponsorisé (bientôt)', a: '🎁 Les recos de tes affinités (bientôt)' },
+  { s: '✨ Cadre argent · 🗳️ proposer un défi (bientôt)', a: '🧭 Ta tribu (bientôt)' },
+  { s: '🗳️ Un sujet à la une (bientôt)', a: '📡 Radar d\'âmes sœurs (bientôt)' },
+  { s: '✨ Cadre or · classement des Légendes (bientôt)', a: '🧬 Ton ADN de goûts (bientôt)' },
+];
 
 // ─────────────────────────────────────────
 // STATE
@@ -913,6 +938,16 @@ function levelOf(pts) {
   LEVELS.forEach((min, i) => { if (pts >= min) lvl = i + 1; });
   return lvl;
 }
+const myLevel = () => levelOf(profile?.points ?? 0);
+// Encadré « 🔒 Niveau N » : ce qu'on débloque, et combien il reste
+function lockBox(lvl, what) {
+  const left = Math.max(0, LEVELS[lvl - 1] - (profile?.points ?? 0));
+  return `<div class="lock-box">🔒 <b>Niveau ${lvl} · ${LEVEL_NAMES[lvl - 1]}</b> : ${what}
+    <div class="lock-sub">Encore ${left} pts, soit environ ${Math.max(1, Math.ceil(left / 50))} top${left > 50 ? 's' : ''} à remplir.</div></div>`;
+}
+const frameClass = lvl => lvl >= 10 ? 'fr-gold' : lvl >= 8 ? 'fr-silver' : lvl >= 6 ? 'fr-bronze' : '';
+// La personne qui m'a invité : sa compatibilité reste visible dès le niveau 1
+const inviterId = () => { try { return localStorage.getItem('hf_inviter'); } catch (e) { return null; } };
 
 function ageBand(y) {
   if (!y) return null;
@@ -2119,6 +2154,17 @@ const fetchMyBadges = async userId => {
 };
 // Nouveaux badges depuis la dernière vérification : on les annonce une fois
 async function checkNewBadges() {
+  if (profile && me) {
+    const lvl = myLevel(), known = readPref('lvlKnown', null);
+    writePref('lvlKnown', lvl);
+    if (known && lvl > known) {
+      // Seulement ce qui existe déjà (pas les fonctions « bientôt »)
+      const u = UNLOCKS[lvl - 1], ready = x => x.split(' · ').filter(y => !y.includes('(bientôt)'));
+      const got = [...ready(u.s), ...ready(u.a)].join(' · ');
+      toast(`🎉 Niveau ${lvl} · ${LEVEL_NAMES[lvl - 1]} !${got ? ' Débloqué : ' + got : ' De nouvelles fonctionnalités arrivent bientôt à ce niveau.'}`);
+      return;
+    }
+  }
   if (!hasComments || !badgeDefs.length || !me) return;
   const got = (await fetchMyBadges(me.id)).map(b => b.badge);
   const known = readPref('badgesKnown', null);
@@ -2180,6 +2226,9 @@ async function openComments(topId) {
   const { data: t } = await sb.from('tops').select('id,user_id,topic_id,profiles!tops_user_id_fkey(handle)').eq('id', topId).maybeSingle();
   if (!t) { $('cm-list').innerHTML = '<div class="empty">Top introuvable</div>'; return; }
   cmTop = { id: t.id, user_id: t.user_id, topic_id: t.topic_id, handle: t.profiles?.handle || '?' };
+  const canWrite = myLevel() >= 2;
+  document.querySelector('#cm-modal .cm-form').style.display = canWrite ? '' : 'none';
+  $('cm-lock').innerHTML = canWrite ? '' : lockBox(2, 'écris tes propres commentaires.').replace('class="lock-box"', 'class="lock-box" style="margin:12px 0 0"');
   const topic = topicById(t.topic_id);
   $('cm-sub').textContent = (t.user_id === me.id ? 'Ton top' : 'Le top de ' + cmTop.handle) + (topic ? ' · ' + topic.title.replace(/^Top 5 /, '') : '');
   renderComments();
@@ -2360,8 +2409,14 @@ async function renderTwins() {
   }
   if (!suggCache) box.innerHTML = '<div class="slbl">👯 Tes affinités</div>' + LOADER;
   try { await getSuggestions(); } catch (e) { box.innerHTML = ''; return; }
-  const twins = suggCache.twins || [], soul = suggCache.soulmates || [];
+  const lvl = myLevel();
+  const twins = (suggCache.twins || []).slice(0, lvl >= 6 ? 10 : 3), soul = suggCache.soulmates || [];
   const pl = (n, w) => `${n} ${w}${n > 1 ? 's' : ''}`;
+  if (lvl < 4) {
+    box.innerHTML = '<div class="slbl">👯 Tes plus grandes affinités</div>' + lockBox(4, 'découvre les 3 personnes qui ont les goûts les plus proches des tiens.')
+      + '<div class="slbl">💞 Tes âmes sœurs par thème</div>' + lockBox(5, 'ton âme sœur en Cinéma, en Musique, en Sport…');
+    return;
+  }
   box.innerHTML = '<div class="slbl">👯 Tes plus grandes affinités</div>' + (twins.length
     ? twins.map(x => `<div class="hi5-row" style="cursor:pointer" onclick="openUser('${x.u}')">
         <div class="cav" style="background:${colorFor(x.handle)}">${initialOf({ handle: x.handle })}</div>
@@ -2369,7 +2424,9 @@ async function renderTwins() {
         <div class="af-pct">${x.pct} %</div></div>`).join('')
       + '<div class="hint" style="padding:2px 20px 0">Le classement tient compte du nombre de sujets en commun. Touche une personne pour voir votre face-à-face.</div>'
     : '<div class="hint" style="padding:0 20px">Pas encore de réponse commune avec d\'autres personnes. Remplis des sujets populaires pour te comparer !</div>')
-    + (soul.length ? '<div class="slbl">💞 Tes âmes sœurs par thème</div>' + soul.map(x => `<div class="hi5-row" style="cursor:pointer" onclick="openUser('${x.u}')">
+    + (lvl < 6 ? lockBox(6, 'tes 10 meilleures affinités (au lieu de 3).') : '')
+    + (lvl < 5 ? '<div class="slbl">💞 Tes âmes sœurs par thème</div>' + lockBox(5, 'ton âme sœur en Cinéma, en Musique, en Sport…') : '')
+    + (lvl >= 5 && soul.length ? '<div class="slbl">💞 Tes âmes sœurs par thème</div>' + soul.map(x => `<div class="hi5-row" style="cursor:pointer" onclick="openUser('${x.u}')">
         <div style="font-size:22px;width:34px;text-align:center">${CAT_ICON[x.c] || '⭐'}</div>
         <div class="hi5-txt"><strong>${esc(x.c)}</strong><div class="topic-meta"><span class="who">${esc(x.handle)}</span> · sur ${pl(x.n, 'sujet')}</div></div>
         <div class="af-pct">${x.pct} %</div></div>`).join('') : '');
@@ -2380,6 +2437,10 @@ async function renderMatch(userId, p) {
   const box = $('up-match');
   box.innerHTML = '';
   if (!me || userId === me.id) return;
+  if (myLevel() < 3 && userId !== inviterId()) {
+    box.innerHTML = '<div style="height:12px"></div>' + lockBox(3, `découvre ta compatibilité avec ${esc(p.handle)} et vos réponses communes.`);
+    return;
+  }
   const items = await fetchAll(() => sb.from('top_items')
     .select(`top_id,${ITEM_COLS()},tops!inner(topic_id,user_id)`)
     .in('tops.user_id', [me.id, userId])
@@ -2423,7 +2484,7 @@ async function renderMatch(userId, p) {
       <div class="match-sub">entre toi et ${who} · ${pl(c.rows.length, 'sujet')} en commun · ${pl(c.common, 'réponse')} identique${c.common > 1 ? 's' : ''}</div>
       <div class="match-cats">${cats}</div></div>`
     + (same ? '<div class="slbl">✅ Vos réponses communes</div>' + same : '')
-    + (diff ? '<div class="slbl">⚡ Vos plus gros désaccords</div>' + diff : '');
+    + (diff ? '<div class="slbl">⚡ Vos plus gros désaccords</div>' + (myLevel() >= 5 ? diff : lockBox(5, 'vos plus gros désaccords, sujet par sujet.')) : '');
 }
 
 let afTimer = null;
@@ -2439,6 +2500,7 @@ async function afSearch() {
     box.innerHTML = '<div class="insight" style="margin-top:4px"><div class="ins-tag">🔎 Qui a aussi mis…</div><div class="ins-text">Tape un film, un album, un club, une ville… et découvre combien de personnes l\'ont dans leur top, et à quelle place.</div></div>';
     return;
   }
+  if (myLevel() < 2) { box.innerHTML = lockBox(2, 'découvre qui a mis la même chose que toi dans son top.'); return; }
   box.innerHTML = LOADER;
   const { data, error } = await sb.from('top_items')
     .select(`top_id,${ITEM_COLS()},tops!inner(topic_id,user_id,profiles!tops_user_id_fkey(id,handle,is_demo))`)
@@ -2630,7 +2692,8 @@ async function renderStat(kind) {
       <div class="slbl">Niveaux</div>
       <div class="card" style="margin:0 16px;padding:4px 16px">
         ${LEVELS.map((min, i) => `<div class="lvl-row ${i + 1 === lvl ? 'cur' : pts >= min ? '' : 'off'}">
-          <span>${pts >= min ? '✅' : '🔒'}</span><span>Niv. ${i + 1} · ${LEVEL_NAMES[i]}</span><span style="margin-left:auto">${min} pts</span></div>`).join('')}
+          <span>${pts >= min ? '✅' : '🔒'}</span><span>Niv. ${i + 1} · ${LEVEL_NAMES[i]}</span><span style="margin-left:auto">${min} pts</span></div>
+          <div class="lvl-unl">🛡️ ${UNLOCKS[i].s}<br>💞 ${UNLOCKS[i].a}</div>`).join('')}
       </div>
       <div class="slbl">Historique</div>
       ${events.length ? byMonth(events, e => e.at, e => `
@@ -3210,6 +3273,10 @@ let createCategory = null;
 let createType = null;   // 'movie' | 'tv' | 'artist' | 'album' | 'track' | null
 
 function startCreate() {
+  if (myLevel() < 3) {
+    const left = Math.max(0, LEVELS[2] - (profile?.points ?? 0));
+    return toast(`🔒 Créer un sujet se débloque au niveau 3 · Explorateur (encore ${left} pts, environ ${Math.max(1, Math.ceil(left / 50))} tops)`);
+  }
   createStep = 1;
   createCategory = null;
   $('top-title').value = '';
@@ -3348,6 +3415,13 @@ function fillProfileHeader(prefix, p) {
   $(prefix + 'filled').textContent = p.tops_filled ?? 0;
   $(prefix + 'created').textContent = p.tops_created ?? 0;
   $(prefix + 'pts').textContent = pts;
+  const av = $(prefix + 'av');
+  av.classList.remove('fr-bronze', 'fr-silver', 'fr-gold');
+  if (frameClass(lvl)) av.classList.add(frameClass(lvl));
+  const tb = p.title_badge && lvl >= 4 && badgeDefs.find(d => d.code === p.title_badge);
+  const tEl = $(prefix + 'title');
+  tEl.textContent = tb ? `${tb.emoji} ${tb.label}` : '';
+  tEl.style.display = tb ? '' : 'none';
   return lvl;
 }
 
@@ -3410,6 +3484,20 @@ async function renderProfile() {
   renderBadges('p-badges', me.id);
 }
 
+// Titre sous le pseudo : un de mes badges, à partir du niveau 4
+async function renderTitlePicker() {
+  const box = $('ed-title-box');
+  box.innerHTML = '';
+  if (!hasComments || !('title_badge' in profile)) return;
+  if (myLevel() < 4) { box.innerHTML = '<div class="mgroup">Titre sous ton pseudo</div><p class="hint" style="margin-bottom:16px">🔒 Se débloque au niveau 4 · Connaisseur.</p>'; return; }
+  const got = new Set((await fetchMyBadges(me.id)).map(b => b.badge));
+  const opts = badgeDefs.filter(d => got.has(d.code));
+  box.innerHTML = '<div class="mgroup">Titre sous ton pseudo</div>' + (opts.length
+    ? `<select id="ed-title" class="input" style="margin-bottom:14px"><option value="">Aucun</option>${opts.map(d =>
+        `<option value="${d.code}" ${profile.title_badge === d.code ? 'selected' : ''}>${d.emoji} ${esc(d.label)}</option>`).join('')}</select>`
+    : '<p class="hint" style="margin-bottom:16px">Débloque un badge pour l\'afficher sous ton pseudo.</p>');
+}
+
 function openEditProfile() {
   $('ed-name').value = profile.name || '';
   $('ed-handle').value = profile.handle || '';
@@ -3419,6 +3507,7 @@ function openEditProfile() {
   $('ed-msg').style.display = 'none';
   $('ed-bio').value = profile.bio || '';
   $('ed-bio-n').textContent = ($('ed-bio').value.length) + '/160';
+  renderTitlePicker();
   pendingAvatar = avatarOk(profile.avatar_url) ? profile.avatar_url : null;
   $('ed-av').style.background = colorFor(profile.handle);
   setAvatar($('ed-av'), { ...profile, avatar_url: pendingAvatar });
@@ -3479,6 +3568,7 @@ async function saveProfile() {
   btn.disabled = true;
   const { error } = await sb.from('profiles').update({
     ...(has008() ? { bio: $('ed-bio').value.trim() || null, links, avatar_url: pendingAvatar } : {}),
+    ...($('ed-title') ? { title_badge: $('ed-title').value || null } : {}),
     name,
     handle: '@' + handle,
     country: $('ed-country').value || null,
@@ -3543,6 +3633,7 @@ async function openInvite() {
   const t = await ensureTopic(invite.t);
   if (!t) { invite = null; return; }
   if (invite.de && invite.de !== me.id) {
+    try { localStorage.setItem('hf_inviter', invite.de); } catch (e) {}
     const { data } = await sb.from('profiles').select('handle').eq('id', invite.de).maybeSingle();
     invite.handle = data?.handle || null;
   }
