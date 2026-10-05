@@ -780,9 +780,9 @@ const TMDB_IMG = 'https://image.tmdb.org/t/p/w92';
 const ENTITY = {
   movie:  { icon: '🎬', label: 'Films',     one: 'film',    the: 'le film',     ph: 'Titre du film',       a: 'un film',     src: 'tmdb' },
   tv:     { icon: '📺', label: 'Séries',    one: 'série',   the: 'la série',    ph: 'Titre de la série',   a: 'une série',   src: 'tmdb' },
-  artist: { icon: '🎤', label: 'Artistes',  one: 'artiste', the: "l'artiste",   ph: "Nom de l'artiste",    a: 'un artiste',  src: 'mb' },
-  album:  { icon: '💿', label: 'Albums',    one: 'album',   the: "l'album",     ph: "Titre de l'album",    a: 'un album',    src: 'mb' },
-  track:  { icon: '🎵', label: 'Chansons',  one: 'chanson', the: 'la chanson',  ph: 'Titre de la chanson', a: 'une chanson', src: 'mb' },
+  artist: { icon: '🎤', label: 'Artistes',  one: 'artiste', the: "l'artiste",   ph: "Nom de l'artiste",    a: 'un artiste',  src: 'dz' },
+  album:  { icon: '💿', label: 'Albums',    one: 'album',   the: "l'album",     ph: "Titre de l'album",    a: 'un album',    src: 'dz' },
+  track:  { icon: '🎵', label: 'Chansons',  one: 'chanson', the: 'la chanson',  ph: 'Titre de la chanson', a: 'une chanson', src: 'dz' },
 };
 
 const CATEGORIES = [
@@ -942,11 +942,13 @@ function keyMaker(items) {
   items.forEach(it => { if (it.ext_id) alias[norm(it.content)] = idKey(it); });
   return it => idKey(it) || alias[norm(it.content)] || norm(it.content);
 }
-// Identifiant d'une réponse officielle. Une chanson existe en plusieurs enregistrements dans
-// MusicBrainz (album, live, single…) : on l'identifie par son libellé officiel « Titre — Artiste ».
+// Identifiant d'une réponse officielle. En musique, un même titre existe en plusieurs exemplaires
+// (versions explicite / radio, rééditions, et anciennes réponses MusicBrainz) : on l'identifie par son
+// libellé officiel « Titre — Artiste » (ou le nom de l'artiste), quelle que soit la base d'origine.
 function idKey(it) {
   if (!it.ext_id) return '';
-  return it.ext_id.startsWith('mb:track:') ? 'mbt:' + norm(it.content) : it.ext_id;
+  const m = it.ext_id.match(/^(?:mb|dz):(artist|album|track):/);
+  return m ? { artist: 'mbr:', album: 'mba:', track: 'mbt:' }[m[1]] + norm(it.content) : it.ext_id;
 }
 
 async function tmdbSearch(type, q) {
@@ -1018,11 +1020,64 @@ async function mbSearch(type, q) {
   mbCache.set(key, out);
   return out;
 }
+// Deezer (catalogue grand public, résultats triés par popularité). L'API n'autorise pas les appels
+// directs depuis un site : on passe par JSONP (balise <script> avec fonction de rappel).
+const dzCache = new Map();
+let dzSeq = 0;
+function dzJsonp(path) {
+  return new Promise((resolve, reject) => {
+    const cb = '__dz' + (++dzSeq) + '_' + Date.now();
+    const sc = document.createElement('script');
+    const done = () => { clearTimeout(timer); delete window[cb]; sc.remove(); };
+    const timer = setTimeout(() => { done(); reject(new Error('Deezer : délai dépassé')); }, 8000);
+    window[cb] = j => { done(); j && j.error ? reject(new Error('Deezer : ' + (j.error.message || 'erreur'))) : resolve(j); };
+    sc.onerror = () => { done(); reject(new Error('Deezer injoignable')); };
+    sc.src = `https://api.deezer.com/${path}${path.includes('?') ? '&' : '?'}output=jsonp&callback=${cb}`;
+    document.head.appendChild(sc);
+  });
+}
+// Image Deezer : on ne garde que l'empreinte (dzc: pochette, dza: photo d'artiste)
+const dzPoster = (url, md5, kind) => {
+  const m = (url || '').match(/\/images\/(cover|artist)\/([0-9a-f]{32})\//);
+  return m ? (m[1] === 'cover' ? 'dzc:' : 'dza:') + m[2] : md5 && /^[0-9a-f]{32}$/.test(md5) ? kind + md5 : null;
+};
+const dzImg = poster => `https://cdn-images.dzcdn.net/images/${poster.startsWith('dza:') ? 'artist' : 'cover'}/${poster.slice(4)}/250x250-000000-80-0-0.jpg`;
+const fans = n => n >= 1e6 ? (n / 1e6).toFixed(1).replace('.', ',').replace(',0', '') + ' M fans' : n >= 1e3 ? Math.round(n / 1e3) + ' k fans' : n ? n + ' fans' : '';
+async function dzSearch(type, q) {
+  const key = type + '|' + fold(q);
+  if (dzCache.has(key)) return dzCache.get(key);
+  // « titre - artiste » : recherche avancée Deezer
+  const parts = q.split(/\s+[-–—]\s+/).map(x => x.trim().replace(/"/g, '')).filter(Boolean);
+  const query = parts.length > 1 && type !== 'artist'
+    ? `${type === 'album' ? 'album' : 'track'}:"${parts[0]}" artist:"${parts[1]}"` : q.trim();
+  const j = await dzJsonp(`search/${type}?q=${encodeURIComponent(query)}&limit=25`);
+  const data = j.data || [];
+  let out;
+  if (type === 'artist') {
+    out = data.map(a => ({ content: a.name, orig: fans(a.nb_fan), ext_id: 'dz:artist:' + a.id, year: null, poster: dzPoster(a.picture_medium, a.md5_image, 'dza:') }));
+  } else if (type === 'album') {
+    // Vrais albums d'abord ; singles, EP et compilations ensuite
+    const RT = { album: 0, ep: 1, single: 2, compile: 3 };
+    out = data.map((a, i) => ({ a, i })).sort((x, y) => ((RT[x.a.record_type] ?? 2) - (RT[y.a.record_type] ?? 2)) || (x.i - y.i))
+      .map(({ a }) => ({ content: `${a.title} — ${a.artist?.name || ''}`.replace(/ — $/, ''), orig: a.record_type && a.record_type !== 'album' ? { single: 'Single', ep: 'EP', compile: 'Compilation' }[a.record_type] || '' : '',
+        ext_id: 'dz:album:' + a.id, year: null, poster: dzPoster(a.cover_medium, a.md5_image, 'dzc:') }));
+  } else {
+    out = data.map(t => ({ content: `${t.title} — ${t.artist?.name || ''}`.replace(/ — $/, ''), orig: t.album?.title || '',
+      ext_id: 'dz:track:' + t.id, year: null, poster: dzPoster(t.album?.cover_medium, t.md5_image, 'dzc:') }));
+  }
+  // Versions en double (explicite / radio, rééditions) : une seule ligne par titre
+  const seen = new Set();
+  out = out.filter(r => { const k = idKey(r); return !seen.has(k) && seen.add(k); }).slice(0, 15);
+  dzCache.set(key, out);
+  return out;
+}
 const caaImg = it => `https://coverartarchive.org/release-group/${it.ext_id.split(':')[2]}/front-250`;
 // Recherche selon la source du type de réponse
-const mediaSearch = (type, q) => ENTITY[type].src === 'tmdb' ? tmdbSearch(type, q) : mbSearch(type, q);
+// Musique : Deezer, et MusicBrainz en secours si Deezer ne répond pas
+const mediaSearch = (type, q) => ENTITY[type].src === 'tmdb' ? tmdbSearch(type, q) : dzSearch(type, q).catch(() => mbSearch(type, q));
 // Image d'une option de recherche (affiche TMDB, pochette d'album) ; sinon l'icône du type
 const mediaImg = (p, type) => p.poster && p.ext_id?.startsWith('tmdb:') ? `<img class="ac-poster" src="${TMDB_IMG + p.poster}" alt="" loading="lazy">`
+  : p.poster && /^dz[ca]:/.test(p.poster) ? `<img class="ac-poster sq" src="${dzImg(p.poster)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=&quot;ac-poster&quot;>${ENTITY[type].icon}</div>'">`
   : p.poster === 'caa' ? `<img class="ac-poster" src="${caaImg(p)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=&quot;ac-poster&quot;>💿</div>'">`
   : `<div class="ac-poster">${ENTITY[type].icon}</div>`;
 
@@ -1064,6 +1119,7 @@ async function wikiImage(id) {
 function thumb(it) {
   if (!it.poster || !it.ext_id) return '';
   if (it.ext_id.startsWith('tmdb:') && it.poster.startsWith('/')) return `<img class="it-th" src="${TMDB_IMG + it.poster}" alt="" loading="lazy">`;
+  if (it.ext_id.startsWith('dz:') && /^dz[ca]:[0-9a-f]{32}$/.test(it.poster)) return `<img class="it-th" src="${dzImg(it.poster)}" alt="" loading="lazy" onerror="this.remove()">`;
   if (it.ext_id.startsWith('mb:album:') && it.poster === 'caa') return `<img class="it-th" src="${caaImg(it)}" alt="" loading="lazy" onerror="this.remove()">`;
   if (/^wd:Q\d+$/.test(it.ext_id) && !it.poster.startsWith('/')) return `<img class="it-th" src="${esc(commonsImg(it.poster))}" alt="" loading="lazy">`;
   return '';
@@ -2633,7 +2689,7 @@ function renderFillRows() {
           if (my !== seq) return;
           res = res.filter(r => !taken.has(idKey(r)));
           show(res, res.length ? '' : `Aucun résultat — ${ENTITY[fillMedia].src === 'tmdb' ? 'essaie le titre original, ou ajoute l\'année' : 'essaie « titre - artiste »'} ?`);
-        }, ENTITY[fillMedia].src === 'mb' ? 450 : 250);
+        }, 250);
         return;
       }
       // Pas de liste automatique quand la case est vide : on n'incite pas à reprendre les réponses des autres
@@ -2684,7 +2740,7 @@ function renderFillRows() {
   if (fillMedia) box.insertAdjacentHTML('beforeend',
     ENTITY[fillMedia].src === 'tmdb'
       ? '<p class="tmdb-note">Données films et séries : <strong>TMDB</strong>. Ce produit utilise l\'API TMDB mais n\'est ni approuvé ni certifié par TMDB.</p>'
-      : '<p class="tmdb-note">Données musicales : <strong>MusicBrainz</strong> (base ouverte, licence CC0) · pochettes : Cover Art Archive.</p>');
+      : '<p class="tmdb-note">Données musicales : <strong>Deezer</strong>.</p>');
 }
 
 async function publishFill() {

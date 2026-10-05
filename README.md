@@ -37,6 +37,7 @@ Les évolutions se font par des fichiers `supabase/migrations/NNN_*.sql`, à ex�
 - `009_musique_musicbrainz.sql` : sujets musique reliés à MusicBrainz (artistes, albums, chansons ; identifiant unique, pochettes).
 - `010_defis_sponsorises.sql` : défis sponsorisés (bonus de points, carte aux couleurs de la marque) + exemple « saveurs Danette ».
 - `011_defis_sponsorises_quotidiens.sql` : un défi sponsorisé différent chaque jour (30 thèmes d'exemple, programmés sur 365 jours ; relancer pour prolonger).
+- `012_musique_deezer.sql` : la musique passe sur Deezer (résultats triés par popularité, pochettes) ; MusicBrainz reste en secours et les anciennes réponses restent valables.
 
 ### Défis sponsorisés
 Table Editor → `sponsored_challenges` (modifiable par les admins uniquement) :
