@@ -866,11 +866,11 @@ const UNLOCKS = [
   { s: '✏️ Créer des sujets', a: '💞 Compatibilité et face-à-face sur tous les profils' },
   { s: '✨ Un titre sous ton pseudo', a: '👯 Tes 3 meilleures affinités' },
   { s: '✉️ Messagerie (bientôt)', a: '💞 Âmes sœurs par thème · ⚡ vos désaccords' },
-  { s: '✨ Cadre bronze', a: '👯 Tes 10 meilleures affinités · 🙃 tes opposés (bientôt)' },
-  { s: '🗳️ Vote du thème sponsorisé (bientôt)', a: '🎁 Les recos de tes affinités (bientôt)' },
-  { s: '✨ Cadre argent · 🗳️ proposer un défi (bientôt)', a: '🧭 Ta tribu (bientôt)' },
-  { s: '🗳️ Un sujet à la une (bientôt)', a: '📡 Radar d\'âmes sœurs (bientôt)' },
-  { s: '✨ Cadre or · classement des Légendes (bientôt)', a: '🧬 Ton ADN de goûts (bientôt)' },
+  { s: '✨ Cadre bronze', a: '👯 Tes 10 meilleures affinités · 🙃 Tes opposés' },
+  { s: '🗳️ Vote du thème sponsorisé (bientôt)', a: '🎁 Les recos de tes affinités' },
+  { s: '✨ Cadre argent · 🗳️ proposer un défi (bientôt)', a: '🧭 Ta tribu' },
+  { s: '🗳️ Un sujet à la une (bientôt)', a: '📡 Radar d\'âmes sœurs' },
+  { s: '✨ Cadre or · classement des Légendes (bientôt)', a: '🧬 Ton ADN de goûts' },
 ];
 
 // ─────────────────────────────────────────
@@ -1954,13 +1954,16 @@ async function getSuggestions() {
   const short = t => { const x = (t || '').replace(/^Top 5 /, ''); return x.length > 38 ? x.slice(0, 36) + '…' : x; };
 
   // 👯 Affinités : compatibilité avec chaque personne, sur les sujets que j'ai remplis
-  let twins = [], matches = [], soulmates = [];
+  let twins = [], matches = [], soulmates = [], opposites = [], recos = [], tribe = [], dna = null, radarNew = [];
   if (myTopics.length) {
     const items = await fetchAll(() => sb.from('top_items')
       .select(`top_id,${ITEM_COLS()},tops!inner(topic_id,user_id)`)
       .in('tops.topic_id', myTopics.slice(0, 80))
       .order('top_id').order('rank'));
-    const idx = indexTops(items, keyMaker(items));
+    const key = keyMaker(items);
+    const idx = indexTops(items, key);
+    const labels = {};   // « sujet|réponse » → libellé officiel
+    items.forEach(it => { const kk = it.tops.topic_id + '|' + key(it); if (!labels[kk] || it.ext_id) labels[kk] = itemLabel(it); });
     const mine = idx[me.id] || {};
     Object.keys(idx).forEach(u => {
       if (u === me.id || !okUser(profOf[u])) return;
@@ -1975,13 +1978,76 @@ async function getSuggestions() {
       if (r > 0 && (!cats[c] || r > cats[c].r)) cats[c] = { c, r, u: m.u, pct: compatPct(sims), n: sims.length };
     }));
     soulmates = Object.values(cats).sort((a, b) => b.r - a.r);
+    const allM = matches.slice();
+    // 🙃 Opposés : les moins compatibles, sur au moins 2 sujets communs (sinon c'est du hasard)
+    opposites = allM.filter(m => m.rows.length >= 2).sort((a, b) => a.pct - b.pct || b.rows.length - a.rows.length).slice(0, 3);
     matches = matches.filter(m => m.pct > 0);
-    const ids = [...new Set([...matches.slice(0, 10).map(m => m.u), ...soulmates.map(x => x.u)])];
+    // 🎁 Recos : ce que mes 10 meilleures affinités mettent dans leurs tops (sur mes sujets) et pas moi
+    const tw = Object.fromEntries(matches.slice(0, 10).map(m => [m.u, m.pct / 100]));
+    const sc = {}, by = {};
+    items.forEach(it => {
+      const u = it.tops.user_id, t = it.tops.topic_id, k = key(it);
+      if (!tw[u] || !mine[t] || mine[t].has(k)) return;
+      const kk = t + '|' + k;
+      sc[kk] = (sc[kk] || 0) + tw[u] * RW(it.rank);
+      (by[kk] = by[kk] || new Set()).add(u);
+    });
+    recos = Object.entries(sc).sort((a, b) => b[1] - a[1]).slice(0, 6)
+      .map(([kk]) => ({ t: kk.split('|')[0], label: labels[kk], n: by[kk].size }));
+    // 🧭 Tribu : le profil type (âge, pays, genre) avec qui je suis le plus compatible en moyenne
+    const DIMS = [['🎂', p => ageBand(p.birth_year), v => v + ' ans'], ['🌍', p => p.country, v => v], ['👤', p => p.gender, v => ({ Homme: 'Les hommes', Femme: 'Les femmes' })[v] || v]];
+    tribe = DIMS.map(([ico, f, fmt]) => {
+      const g = {};
+      allM.forEach(m => { const v = f(profOf[m.u] || {}); if (v) (g[v] = g[v] || []).push(m.pct); });
+      const best = Object.entries(g).filter(([, a]) => a.length >= 2)
+        .map(([v, a]) => ({ v, avg: Math.round(avg(a)), n: a.length })).sort((a, b) => b.avg - a.avg)[0];
+      return best && { ico, label: fmt(best.v), avg: best.avg, n: best.n };
+    }).filter(Boolean);
+    // 🧬 ADN : catégories fortes, côté grand public / original, réponse la plus rare, n°1 le plus partagé
+    const people = {}, cnt = {};
+    items.forEach(it => {
+      const t = it.tops.topic_id, u = it.tops.user_id;
+      if (u === me.id || !okUser(profOf[u])) return;
+      (people[t] = people[t] || new Set()).add(u);
+      const kk = t + '|' + key(it); cnt[kk] = (cnt[kk] || 0) + 1;
+    });
+    const shares = [];
+    let rare = null, consensus = null;
+    Object.entries(mine).forEach(([t, m]) => {
+      const n = people[t]?.size || 0;
+      if (n < 3) return;
+      m.forEach((r, k) => {
+        const sh = (cnt[t + '|' + k] || 0) / n, x = { sh, label: labels[t + '|' + k], t };
+        shares.push(sh);
+        if (!rare || sh < rare.sh) rare = x;
+        if (r === 1 && (!consensus || sh > consensus.sh)) consensus = x;
+      });
+    });
+    const catN = {};
+    myTopics.forEach(id => { const c = topicById(id)?.category; if (c) catN[c] = (catN[c] || 0) + 1; });
+    dna = shares.length >= 5 ? {
+      cats: Object.entries(catN).sort((a, b) => b[1] - a[1]).slice(0, 3),
+      main: Math.round(100 * shares.filter(x => x >= 0.2).length / shares.length),
+      rare, consensus,
+    } : null;
+    // 📡 Radar : nouvelles âmes sœurs (80 % ou plus, sur au moins 2 sujets) depuis la dernière fois
+    if (myLevel() >= 9) {
+      const soul80 = allM.filter(m => m.pct >= 80 && m.rows.length >= 2).map(m => m.u);
+      const known = readPref('radarKnown', null);
+      if (known) radarNew = allM.filter(m => soul80.includes(m.u) && !known.includes(m.u));
+      writePref('radarKnown', [...new Set([...(known || []), ...soul80])]);
+    }
+    const ids = [...new Set([...matches.slice(0, 10), ...soulmates, ...opposites, ...radarNew].map(x => x.u))];
     if (ids.length) {
       const { data } = await sb.from('profiles').select('id,handle').in('id', ids);
       const h = Object.fromEntries((data || []).map(p => [p.id, p.handle]));
-      matches.forEach(x => { x.handle = h[x.u] || '?'; });
-      soulmates.forEach(x => { x.handle = h[x.u] || '?'; });
+      [...matches, ...soulmates, ...opposites, ...radarNew].forEach(x => { x.handle = h[x.u] || '?'; });
+    }
+    if (radarNew.length) {
+      const hits = readPref('radarHits', []);
+      radarNew.forEach(m => hits.unshift({ u: m.u, handle: m.handle, pct: m.pct, at: new Date().toISOString() }));
+      writePref('radarHits', hits.slice(0, 5));
+      toast(`📡 Radar : ${radarNew[0].handle} est ton âme sœur à ${radarNew[0].pct} % !`);
     }
     twins = matches.slice(0, 10);
   }
@@ -2040,7 +2106,7 @@ async function getSuggestions() {
     return { t, score, why: top.why, cands };
   }).sort((a, b) => b.score - a.score);
 
-  suggCache = { list, twins, matches, soulmates };
+  suggCache = { list, twins, matches, soulmates, opposites, recos, tribe, dna };
   return list;
 }
 
@@ -2430,6 +2496,41 @@ async function renderTwins() {
         <div style="font-size:22px;width:34px;text-align:center">${CAT_ICON[x.c] || '⭐'}</div>
         <div class="hi5-txt"><strong>${esc(x.c)}</strong><div class="topic-meta"><span class="who">${esc(x.handle)}</span> · sur ${pl(x.n, 'sujet')}</div></div>
         <div class="af-pct">${x.pct} %</div></div>`).join('') : '');
+  box.innerHTML += affExtras(lvl);
+}
+
+// Nouveautés des niveaux 6 à 10 (affichées après les âmes sœurs)
+function affExtras(lvl) {
+  const c = suggCache, pl = (n, w) => `${n} ${w}${n > 1 ? 's' : ''}`;
+  const sec = (title, need, what, body) => `<div class="slbl">${title}</div>` + (lvl >= need ? body : lockBox(need, what));
+  const short = t => (topicById(t)?.title || '').replace(/^Top 5 /, '');
+  const opp = (c.opposites || []).map(x => `<div class="hi5-row" style="cursor:pointer" onclick="openUser('${x.u}')">
+      <div class="cav" style="background:${colorFor(x.handle)}">${initialOf({ handle: x.handle })}</div>
+      <div class="hi5-txt"><span class="who">${esc(x.handle)}</span><div class="topic-meta">${compatLabel(x.pct)} · ${pl(x.rows.length, 'sujet')} en commun</div></div>
+      <div class="af-pct" style="color:var(--t3)">${x.pct} %</div></div>`).join('');
+  const rec = (c.recos || []).map(r => `<div class="mrow" onclick="openTopic('${r.t}')"><div class="mt">${esc(short(r.t))}</div>
+      <div class="mi">${esc(r.label)} <small>· chez ${pl(r.n, 'de tes affinités').replace('affinitéss', 'affinités')}</small></div></div>`).join('');
+  const tri = (c.tribe || []).map(x => `<div class="hi5-row"><div style="font-size:22px;width:34px;text-align:center">${x.ico}</div>
+      <div class="hi5-txt"><strong>${esc(x.label)}</strong><div class="topic-meta">${x.avg} % de compatibilité en moyenne · ${pl(x.n, 'personne')}</div></div></div>`).join('');
+  const hits = readPref('radarHits', []);
+  const rad = '<div class="hint" style="padding:0 20px 8px">Tu seras prévenu dès qu\'une nouvelle personne devient ton âme sœur (80 % ou plus, sur au moins 2 sujets).</div>'
+    + hits.map(h => `<div class="hi5-row" style="cursor:pointer" onclick="openUser('${h.u}')">
+      <div class="cav" style="background:${colorFor(h.handle)}">${initialOf({ handle: h.handle })}</div>
+      <div class="hi5-txt"><span class="who">${esc(h.handle)}</span><div class="topic-meta">📡 détecté ${timeAgo(h.at).toLowerCase()}</div></div>
+      <div class="af-pct">${h.pct} %</div></div>`).join('');
+  const d = c.dna;
+  const adn = d ? `<div class="match-card" style="text-align:left">
+      <div class="match-lbl">${d.main >= 60 ? 'Plutôt grand public 🍿' : d.main <= 30 ? 'Plutôt original 🦄' : 'Entre les deux ⚖️'}</div>
+      <div class="match-sub">${d.main} % de tes réponses sont partagées par au moins 1 personne sur 5</div>
+      <div class="match-cats" style="justify-content:flex-start">${d.cats.map(([k, n]) => `<span class="badge-pill">${CAT_ICON[k] || '⭐'} ${esc(k)} · ${n}</span>`).join('')}</div>
+      ${d.rare ? `<div class="mrow" style="margin:12px 0 0" onclick="openTopic('${d.rare.t}')"><div class="mt">🦄 Ta réponse la plus rare · ${esc(short(d.rare.t))}</div><div class="mi">${esc(d.rare.label)} <small>· ${d.rare.sh ? `chez ${Math.round(d.rare.sh * 100)} % des autres` : 'personne d\'autre ne l\'a mis'}</small></div></div>` : ''}
+      ${d.consensus ? `<div class="mrow" style="margin:8px 0 0" onclick="openTopic('${d.consensus.t}')"><div class="mt">🤝 Ton n°1 le plus partagé · ${esc(short(d.consensus.t))}</div><div class="mi">${esc(d.consensus.label)} <small>· chez ${Math.round(d.consensus.sh * 100)} % des autres</small></div></div>` : ''}
+    </div>` : '<div class="hint" style="padding:0 20px">Remplis encore quelques sujets populaires pour dessiner ton ADN.</div>';
+  return sec('🙃 Tes opposés', 6, 'les personnes aux goûts les plus éloignés des tiens.', opp || '<div class="hint" style="padding:0 20px">Pas encore assez de sujets en commun (2 minimum) pour trouver tes opposés.</div>')
+    + sec('🎁 Les recos de tes affinités', 7, 'ce que tes meilleurs matchs adorent et que tu n\'as jamais mis.', rec || '<div class="hint" style="padding:0 20px">Pas encore de reco : remplis des sujets en commun avec tes affinités.</div>')
+    + sec('🧭 Ta tribu', 8, 'le profil type des personnes qui te ressemblent (âge, pays, genre).', tri || '<div class="hint" style="padding:0 20px">Pas encore assez de personnes comparées pour dessiner ta tribu.</div>')
+    + sec('📡 Radar d\'âmes sœurs', 9, 'une alerte dès qu\'une nouvelle âme sœur (80 % ou plus) arrive.', rad)
+    + sec('🧬 Ton ADN de goûts', 10, 'ton portrait complet : catégories fortes, côté original ou grand public, réponse la plus rare.', adn);
 }
 
 // 💞 Face-à-face sur le profil d'une personne : compatibilité, réponses communes, désaccords
