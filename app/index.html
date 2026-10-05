@@ -111,6 +111,16 @@ textarea.input{resize:none;min-height:80px}
 .card{background:var(--card);border:1px solid var(--border);border-radius:var(--r)}
 .top5-card{margin:0 16px 14px}
 .top5-card .ch{padding:13px 16px 9px;display:flex;align-items:center;gap:10px}
+.cmp-pct{font-size:17px;font-weight:900;color:var(--orange);flex-shrink:0}
+.match-card{margin:14px 16px 4px;background:linear-gradient(145deg,#1A1020,#0E0E14);border:1px solid rgba(255,92,46,.25);border-radius:var(--r);padding:18px;text-align:center}
+.match-pct{font-size:44px;font-weight:900;letter-spacing:-1.5px;color:var(--orange);line-height:1}
+.match-lbl{font-size:15px;font-weight:800;margin-top:6px}
+.match-sub{font-size:12px;color:var(--t3);margin-top:4px}
+.match-cats{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:12px}
+.mrow{margin:0 16px 8px;background:var(--card);border:1px solid var(--border);border-radius:var(--rsm);padding:11px 14px;cursor:pointer}
+.mrow .mt{font-size:12px;color:var(--t3);font-weight:700}
+.mrow .mi{font-size:14px;font-weight:700;margin-top:3px}
+.mrow .mi small{color:var(--t3);font-weight:600}
 .cav{width:34px;height:34px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:white;flex-shrink:0;cursor:pointer}
 .top5-card .cu{font-size:13px;font-weight:700;color:var(--orange);cursor:pointer}
 .top5-card .ct{font-size:11px;color:var(--t3);margin-top:1px}
@@ -650,6 +660,7 @@ textarea.input{resize:none;min-height:80px}
         <div class="p-si"><div class="p-sn" id="up-pts">0</div><div class="p-sl">Points</div></div>
       </div>
     </div>
+    <div id="up-match"></div>
     <div class="slbl">Ses tops</div>
     <div id="up-tops" style="padding-bottom:24px"></div>
   </div>
@@ -1795,7 +1806,52 @@ function setIncludeDemo(v) {
 //  🎬 catégories  : tu remplis beaucoup de sujets de cette catégorie
 //  🎂 génération  : populaire dans ta tranche d'âge
 //  🔥 à défaut    : parmi les plus remplis
-let suggCache = null;   // { list: [{ t, score, why }] }
+let suggCache = null;   // { list: [{ t, score, why }], twins, matches, soulmates }
+
+// ─────────────────────────────────────────
+// COMPATIBILITÉ entre deux personnes
+// ─────────────────────────────────────────
+// Sur chaque sujet rempli par les deux : réponses communes pondérées par leur rang (n°1 = 5 … n°5 = 1),
+// rapportées au maximum possible (deux tops identiques = 100 %). Score global : moyenne sur les sujets
+// en commun, adoucie par une racine carrée pour rester lisible (une réponse commune ne vaut pas ~0 %).
+const RW = r => Math.max(1, 6 - r);
+function topicSim(a, b) {   // a, b : Map clé de réponse → rang
+  let sum = 0;
+  a.forEach((ra, k) => { const rb = b.get(k); if (rb) sum += Math.sqrt(RW(ra) * RW(rb)); });
+  const tot = m => [...m.values()].reduce((x, r) => x + RW(r), 0);
+  return Math.min(1, sum / (Math.max(tot(a), tot(b)) || 1));
+}
+const avg = xs => xs.reduce((x, y) => x + y, 0) / xs.length;
+const compatPct = sims => Math.round(100 * Math.sqrt(avg(sims)));
+// Pour classer : un 100 % sur un seul sujet ne passe pas devant un 80 % sur dix sujets
+const compatRank = sims => avg(sims) * sims.length / (sims.length + 2);
+const compatLabel = pct => pct >= 80 ? 'Âmes sœurs 💞' : pct >= 60 ? 'Très proches ✨' : pct >= 40 ? 'Des goûts en commun 🙂'
+  : pct >= 20 ? 'Quelques points communs' : 'Goûts opposés ⚡';
+// Index personne → sujet → Map(clé → rang)
+function indexTops(items, key) {
+  const idx = {};
+  items.forEach(it => {
+    const u = it.tops.user_id, t = it.tops.topic_id;
+    const byT = idx[u] = idx[u] || {};
+    (byT[t] = byT[t] || new Map()).set(key(it), it.rank);
+  });
+  return idx;
+}
+// Mes tops comparés à ceux d'une personne, sur nos sujets communs
+function compareWith(mine, theirs) {
+  const rows = [];
+  Object.keys(mine).forEach(t => {
+    if (!theirs[t] || !topicById(t)) return;
+    let common = 0;
+    mine[t].forEach((r, k) => { if (theirs[t].has(k)) common++; });
+    rows.push({ t, s: topicSim(mine[t], theirs[t]), common });
+  });
+  if (!rows.length) return null;
+  const byCat = {};
+  rows.forEach(r => { const c = topicById(r.t).category; (byCat[c] = byCat[c] || []).push(r.s); });
+  const sims = rows.map(r => r.s);
+  return { pct: compatPct(sims), rank: compatRank(sims), rows, common: rows.reduce((x, r) => x + r.common, 0), byCat };
+}
 
 async function getSuggestions() {
   if (suggCache) return suggCache.list;
@@ -1811,27 +1867,37 @@ async function getSuggestions() {
   });
   const short = t => { const x = (t || '').replace(/^Top 5 /, ''); return x.length > 38 ? x.slice(0, 36) + '…' : x; };
 
-  // 👯 Affinités : réponses communes avec chaque personne, sur les sujets que j'ai remplis
-  let twins = [];
+  // 👯 Affinités : compatibilité avec chaque personne, sur les sujets que j'ai remplis
+  let twins = [], matches = [], soulmates = [];
   if (myTopics.length) {
     const items = await fetchAll(() => sb.from('top_items')
       .select(`top_id,${ITEM_COLS()},tops!inner(topic_id,user_id)`)
       .in('tops.topic_id', myTopics.slice(0, 80))
       .order('top_id').order('rank'));
-    const key = keyMaker(items);
-    const k = it => it.tops.topic_id + '|' + key(it);
-    const myKeys = new Set(items.filter(it => it.tops.user_id === me.id).map(k));
-    const common = {};
-    items.forEach(it => {
-      const u = it.tops.user_id;
-      if (u !== me.id && okUser(profOf[u]) && myKeys.has(k(it))) common[u] = (common[u] || 0) + 1;
+    const idx = indexTops(items, keyMaker(items));
+    const mine = idx[me.id] || {};
+    Object.keys(idx).forEach(u => {
+      if (u === me.id || !okUser(profOf[u])) return;
+      const c = compareWith(mine, idx[u]);
+      if (c) matches.push({ u, ...c, n: c.common });
     });
-    twins = Object.entries(common).filter(([, n]) => n >= 2).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([u, n]) => ({ u, n }));
-    if (twins.length) {
-      const { data } = await sb.from('profiles').select('id,handle').in('id', twins.map(x => x.u));
+    matches.sort((a, b) => b.rank - a.rank || b.common - a.common);
+    // 💞 Âmes sœurs par thème : la personne la plus compatible dans chaque catégorie
+    const cats = {};
+    matches.forEach(m => Object.entries(m.byCat).forEach(([c, sims]) => {
+      const r = compatRank(sims);
+      if (r > 0 && (!cats[c] || r > cats[c].r)) cats[c] = { c, r, u: m.u, pct: compatPct(sims), n: sims.length };
+    }));
+    soulmates = Object.values(cats).sort((a, b) => b.r - a.r);
+    matches = matches.filter(m => m.pct > 0);
+    const ids = [...new Set([...matches.slice(0, 10).map(m => m.u), ...soulmates.map(x => x.u)])];
+    if (ids.length) {
+      const { data } = await sb.from('profiles').select('id,handle').in('id', ids);
       const h = Object.fromEntries((data || []).map(p => [p.id, p.handle]));
-      twins.forEach(x => { x.handle = h[x.u] || '?'; });
+      matches.forEach(x => { x.handle = h[x.u] || '?'; });
+      soulmates.forEach(x => { x.handle = h[x.u] || '?'; });
     }
+    twins = matches.slice(0, 10);
   }
 
   // 🎬 Mes catégories
@@ -1853,7 +1919,7 @@ async function getSuggestions() {
     if (tw.length) {
       // part (pondérée par le nombre de réponses communes) de mes affinités qui ont rempli ce sujet
       cands.push({ kind: 'twin', s: 3 * tw.reduce((sum, x) => sum + x.n, 0) / twinWeight,
-        why: `👯 <b style="color:var(--orange);cursor:pointer" onclick="event.stopPropagation();openUser('${tw[0].u}')">${esc(tw[0].handle)}</b>, qui a ${tw[0].n} réponses en commun avec toi, l'a rempli`
+        why: `👯 <b style="color:var(--orange);cursor:pointer" onclick="event.stopPropagation();openUser('${tw[0].u}')">${esc(tw[0].handle)}</b>, compatible à ${tw[0].pct} % avec toi, l'a rempli`
           + (tw.length > 1 ? ` (et ${tw.length - 1} autre${tw.length > 2 ? 's' : ''} de tes affinités)` : '') });
     }
 
@@ -1888,7 +1954,7 @@ async function getSuggestions() {
     return { t, score, why: top.why, cands };
   }).sort((a, b) => b.score - a.score);
 
-  suggCache = { list, twins };
+  suggCache = { list, twins, matches, soulmates };
   return list;
 }
 
@@ -2071,13 +2137,70 @@ async function renderTwins() {
   }
   if (!suggCache) box.innerHTML = '<div class="slbl">👯 Tes affinités</div>' + LOADER;
   try { await getSuggestions(); } catch (e) { box.innerHTML = ''; return; }
-  const twins = suggCache.twins || [];
-  box.innerHTML = '<div class="slbl">👯 Tes affinités</div>' + (twins.length
+  const twins = suggCache.twins || [], soul = suggCache.soulmates || [];
+  const pl = (n, w) => `${n} ${w}${n > 1 ? 's' : ''}`;
+  box.innerHTML = '<div class="slbl">👯 Tes plus grandes affinités</div>' + (twins.length
     ? twins.map(x => `<div class="hi5-row" style="cursor:pointer" onclick="openUser('${x.u}')">
         <div class="cav" style="background:${colorFor(x.handle)}">${initialOf({ handle: x.handle })}</div>
-        <div class="hi5-txt"><span class="who">${esc(x.handle)}</span><div class="topic-meta">${x.n} réponses en commun avec toi</div></div>
-        <div style="font-size:16px;color:var(--t3)">›</div></div>`).join('')
-    : '<div class="hint" style="padding:0 20px">Pas encore assez de réponses communes (2 minimum) avec d\'autres personnes.</div>');
+        <div class="hi5-txt"><span class="who">${esc(x.handle)}</span><div class="topic-meta">${compatLabel(x.pct)} · ${pl(x.rows.length, 'sujet')} en commun</div></div>
+        <div class="cmp-pct">${x.pct} %</div></div>`).join('')
+      + '<div class="hint" style="padding:2px 20px 0">Le classement tient compte du nombre de sujets en commun. Touche une personne pour voir votre face-à-face.</div>'
+    : '<div class="hint" style="padding:0 20px">Pas encore de réponse commune avec d\'autres personnes. Remplis des sujets populaires pour te comparer !</div>')
+    + (soul.length ? '<div class="slbl">💞 Tes âmes sœurs par thème</div>' + soul.map(x => `<div class="hi5-row" style="cursor:pointer" onclick="openUser('${x.u}')">
+        <div style="font-size:22px;width:34px;text-align:center">${CAT_ICON[x.c] || '⭐'}</div>
+        <div class="hi5-txt"><strong>${esc(x.c)}</strong><div class="topic-meta"><span class="who">${esc(x.handle)}</span> · sur ${pl(x.n, 'sujet')}</div></div>
+        <div class="cmp-pct">${x.pct} %</div></div>`).join('') : '');
+}
+
+// 💞 Face-à-face sur le profil d'une personne : compatibilité, réponses communes, désaccords
+async function renderMatch(userId, p) {
+  const box = $('up-match');
+  box.innerHTML = '';
+  if (!me || userId === me.id) return;
+  const items = await fetchAll(() => sb.from('top_items')
+    .select(`top_id,${ITEM_COLS()},tops!inner(topic_id,user_id)`)
+    .in('tops.user_id', [me.id, userId])
+    .order('top_id').order('rank'));
+  if (currentUserId !== userId) return;
+  const key = keyMaker(items);
+  const c = compareWith(indexTops(items, key)[me.id] || {}, indexTops(items, key)[userId] || {});
+  const who = esc(p.handle);
+  if (!c) {
+    box.innerHTML = `<div class="match-card"><div style="font-size:30px">💞</div><div class="match-lbl">Pas encore de sujet en commun</div>
+      <div class="match-sub">Remplis un des tops de ${who} ci-dessous pour découvrir votre compatibilité.</div></div>`;
+    return;
+  }
+  // Libellés : sujet → personne → [{ rank, k, label }]
+  const lab = {};
+  items.forEach(it => {
+    const t = it.tops.topic_id, u = it.tops.user_id;
+    ((lab[t] = lab[t] || {})[u] = lab[t][u] || []).push({ rank: it.rank, k: key(it), label: itemLabel(it) });
+  });
+  const short = t => (topicById(t)?.title || '').replace(/^Top 5 /, '');
+  const pl = (n, w) => `${n} ${w}${n > 1 ? 's' : ''}`;
+  const cats = Object.entries(c.byCat).sort((a, b) => b[1].length - a[1].length)
+    .map(([k, sims]) => `<span class="badge-pill">${CAT_ICON[k] || '⭐'} ${esc(k)} ${compatPct(sims)} %</span>`).join('');
+  const same = c.rows.filter(r => r.common).sort((a, b) => b.s - a.s).slice(0, 6).map(r => {
+    const theirs = lab[r.t][userId] || [];
+    const list = (lab[r.t][me.id] || []).filter(x => theirs.some(y => y.k === x.k)).map(x => {
+      const y = theirs.find(y => y.k === x.k);
+      return `${esc(x.label)} <small>${x.rank === y.rank ? `n°${x.rank} tous les deux` : `toi n°${x.rank} · n°${y.rank}`}</small>`;
+    }).join('<br>');
+    return `<div class="mrow" onclick="openTopic('${r.t}')"><div class="mt">${esc(short(r.t))} · ${Math.round(r.s * 100)} %</div><div class="mi">${list}</div></div>`;
+  }).join('');
+  const first = (t, u) => (lab[t][u] || []).find(x => x.rank === 1) || (lab[t][u] || [])[0];
+  const diff = c.rows.filter(r => r.s < 0.2).sort((a, b) => a.s - b.s).slice(0, 3).map(r => {
+    const a = first(r.t, me.id), b = first(r.t, userId);
+    return `<div class="mrow" onclick="openTopic('${r.t}')"><div class="mt">${esc(short(r.t))}</div>
+      <div class="mi">Toi : ${esc(a ? a.label : '–')}<br><small>${who} :</small> ${esc(b ? b.label : '–')}</div></div>`;
+  }).join('');
+  box.innerHTML = `<div class="match-card">
+      <div class="match-pct">${c.pct} %</div>
+      <div class="match-lbl">${compatLabel(c.pct)}</div>
+      <div class="match-sub">entre toi et ${who} · ${pl(c.rows.length, 'sujet')} en commun · ${pl(c.common, 'réponse')} identique${c.common > 1 ? 's' : ''}</div>
+      <div class="match-cats">${cats}</div></div>`
+    + (same ? '<div class="slbl">✅ Vos réponses communes</div>' + same : '')
+    + (diff ? '<div class="slbl">⚡ Vos plus gros désaccords</div>' + diff : '');
 }
 
 let afTimer = null;
@@ -3143,6 +3266,7 @@ function openUser(userId) {
 
 async function renderUser(userId) {
   $('up-handle').textContent = '…';
+  $('up-match').innerHTML = '';
   $('up-tops').innerHTML = LOADER;
   const { data: p } = await sb.from('profiles').select('*').eq('id', userId).maybeSingle();
   if (currentUserId !== userId) return;
@@ -3150,6 +3274,7 @@ async function renderUser(userId) {
   const lvl = fillProfileHeader('up-', p);
   $('up-handle').textContent = p.handle + (p.is_demo ? ' · démo' : '');
   $('up-level').textContent = `Niv. ${lvl} · ${LEVEL_NAMES[lvl - 1]}`;
+  renderMatch(userId, p);
   const likes = await fetchLikeCounts(userId);
   if (currentUserId !== userId) return;
   $('up-tops').innerHTML = myTopRows(userId, likes);
