@@ -1059,7 +1059,9 @@ function keyMaker(items) {
 function idKey(it) {
   if (!it.ext_id) return '';
   const m = it.ext_id.match(/^(?:mb|dz):(artist|album|track):/);
-  return m ? { artist: 'mbr:', album: 'mba:', track: 'mbt:' }[m[1]] + norm(it.content) : it.ext_id;
+  if (m) return { artist: 'mbr:', album: 'mba:', track: 'mbt:' }[m[1]] + norm(it.content);
+  if (/^(osm|off):/.test(it.ext_id)) return it.ext_id.slice(0, 3) + 'p:' + norm(it.content);
+  return it.ext_id;
 }
 
 async function tmdbSearch(type, q) {
@@ -1213,7 +1215,83 @@ const WIKI_TOPICS = [
   // Sportifs en général
   { title: /sportifs français|sportives françaises/i, desc: /sportif|sportive|athlète|footballeu|joueu|nageu|cycliste|pilote|judoka|skieu|rugbyman|handballeu|basketteu|tennis(man|woman)/i },
 ];
-const wikiFor = topic => WIKI_TOPICS.find(w => w.title.test(topic.title)) || null;
+// Sources « souples » (suggestions officielles, saisie libre toujours possible), selon le sujet :
+//  • sport : Wikidata filtré par description (ci-dessus)
+//  • voyages : OpenStreetMap (Photon) — villes, pays, îles, plages, sommets…
+//  • produits et marques (gastronomie, boissons) : Open Food Facts
+//  • autres thèmes « encyclopédiques » : Wikidata sans filtre (description affichée pour choisir)
+const WD_ANY = /^(?!.*(homonymie|Wikimédia|Wikimedia|nom de famille|prénom))/i;
+const WD_CATS = ['Auto & moto', 'Tech & web', 'Marques & mode', 'Nature & animaux', 'Histoire & culture', 'Personnalités',
+  'Gastronomie', 'Boissons', 'Livres', 'Jeux', 'Spectacles & sorties', 'Sport'];
+const PRODUCT_RE = /\b(produits?|bonbons?|biscuits?|céréales|chips|sodas?|yaourts?|glaces?|chocolats?|barres?|gâteaux|confiseries?|snacks?|jus|boissons?|bières?)\b/i;
+const PLACE_TAGS = [
+  [/\b(villes?|capitales?|métropoles?)\b/i, ['place:city', 'place:town']],
+  [/\bpays\b/i, ['place:country']],
+  [/\bîles?\b/i, ['place:island']],
+  [/\bplages?\b/i, ['natural:beach']],
+  [/\b(montagnes?|sommets?)\b/i, ['natural:peak']],
+  [/\b(villages?)\b/i, ['place:village']],
+];
+function wikiFor(topic) {
+  const w = WIKI_TOPICS.find(w => w.title.test(topic.title));
+  if (w) return { src: 'wd', ...w };
+  const t = topic.title, c = topic.category;
+  const place = PLACE_TAGS.find(([re]) => re.test(t));
+  if (c === 'Voyages' || place) return { src: 'osm', tags: place ? place[1] : [] };
+  if (['Gastronomie', 'Boissons', 'Nostalgie'].includes(c) && PRODUCT_RE.test(t)) return { src: 'off' };
+  if (WD_CATS.includes(c)) return { src: 'wd', desc: WD_ANY };
+  return null;
+}
+const softSearch = (cfg, q) => cfg.src === 'osm' ? osmSearch(cfg, q) : cfg.src === 'off' ? offSearch(q) : wikiSearch(cfg, q);
+// Drapeau à partir du code pays (fr → 🇫🇷)
+const flagOf = cc => /^[a-z]{2}$/i.test(cc || '') ? String.fromCodePoint(...[...cc.toUpperCase()].map(ch => 0x1F1E6 + ch.charCodeAt(0) - 65)) : '📍';
+// OpenStreetMap (Photon, sans clé)
+const osmCache = new Map();
+async function osmSearch(cfg, q) {
+  const key = cfg.tags.join(',') + '|' + fold(q);
+  if (osmCache.has(key)) return osmCache.get(key);
+  const url = 'https://photon.komoot.io/api/?lang=fr&limit=15&q=' + encodeURIComponent(q) + cfg.tags.map(t => '&osm_tag=' + encodeURIComponent(t)).join('');
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('OpenStreetMap ' + res.status);
+  const j = await res.json();
+  const seen = new Set();
+  const out = (j.features || []).map(f => f.properties || {}).filter(pp => pp.name && pp.osm_id && /^[NWR]$/.test(pp.osm_type || ''))
+    .map(pp => {
+      const isCountry = pp.osm_value === 'country' || pp.type === 'country';
+      return {
+        content: pp.name, key: norm(pp.name), f: fold(pp.name), soft: true,
+        sub: isCountry ? 'Pays' : [pp.state, pp.country].filter(Boolean).filter((x, i, a) => a.indexOf(x) === i).join(', '),
+        ext_id: 'osm:' + pp.osm_type.toLowerCase() + pp.osm_id, poster: /^[a-z]{2}$/i.test(pp.countrycode || '') ? 'cc:' + pp.countrycode.toLowerCase() : null,
+      };
+    })
+    .filter(r => { const k = r.key + '|' + r.sub; return !seen.has(k) && seen.add(k); }).slice(0, 8);
+  osmCache.set(key, out);
+  return out;
+}
+// Open Food Facts (base ouverte des produits alimentaires) ; recherche limitée à ~10 requêtes / minute
+const offCache = new Map();
+const offImg = poster => 'https://images.openfoodfacts.org/images/products/' + poster.slice(4);
+async function offSearch(q) {
+  const key = fold(q);
+  if (offCache.has(key)) return offCache.get(key);
+  const url = 'https://world.openfoodfacts.org/cgi/search.pl?search_simple=1&action=process&json=1&page_size=24&lc=fr&sort_by=unique_scans_n'
+    + '&fields=code,product_name,product_name_fr,brands,image_small_url&search_terms=' + encodeURIComponent(q);
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Open Food Facts ' + res.status);
+  const j = await res.json();
+  const seen = new Set();
+  const out = (j.products || []).map(pr => {
+    const name = (pr.product_name_fr || pr.product_name || '').trim().replace(/\s+/g, ' ').slice(0, 90);
+    const brand = (pr.brands || '').split(',')[0].trim();
+    const m = (pr.image_small_url || '').match(/\/images\/products\/(.{1,190})$/);
+    return name && /^[0-9]{4,20}$/.test(pr.code || '') && {
+      content: name, key: norm(name), f: fold(name), soft: true, sub: brand && !fold(name).includes(fold(brand)) ? brand : '',
+      ext_id: 'off:' + pr.code, poster: m ? 'off:' + m[1] : null,
+    };
+  }).filter(r => r && !seen.has(r.key) && seen.add(r.key)).slice(0, 8);
+  offCache.set(key, out);
+  return out;
+}
 const wikiCache = new Map();
 const COMMONS = 'https://commons.wikimedia.org/wiki/Special:FilePath/';
 const commonsImg = f => COMMONS + encodeURIComponent(f) + '?width=96';
@@ -1232,11 +1310,13 @@ function thumb(it) {
   if (it.ext_id.startsWith('tmdb:') && it.poster.startsWith('/')) return `<img class="it-th" src="${TMDB_IMG + it.poster}" alt="" loading="lazy">`;
   if (it.ext_id.startsWith('dz:') && /^dz[ca]:[0-9a-f]{32}$/.test(it.poster)) return `<img class="it-th" src="${dzImg(it.poster)}" alt="" loading="lazy" onerror="this.remove()">`;
   if (it.ext_id.startsWith('mb:album:') && it.poster === 'caa') return `<img class="it-th" src="${caaImg(it)}" alt="" loading="lazy" onerror="this.remove()">`;
+  if (it.ext_id.startsWith('osm:') && /^cc:[a-z]{2}$/.test(it.poster)) return `<span class="it-th" style="background:none;font-size:18px;line-height:26px;text-align:center">${flagOf(it.poster.slice(3))}</span>`;
+  if (it.ext_id.startsWith('off:') && it.poster.startsWith('off:')) return `<img class="it-th" src="${esc(offImg(it.poster))}" alt="" loading="lazy" onerror="this.remove()">`;
   if (/^wd:Q\d+$/.test(it.ext_id) && !it.poster.startsWith('/')) return `<img class="it-th" src="${esc(commonsImg(it.poster))}" alt="" loading="lazy">`;
   return '';
 }
 async function wikiSearch(cfg, q) {
-  const key = cfg.desc + '|' + q;
+  const key = cfg.desc + '|' + (cfg.title || '') + '|' + q;
   if (wikiCache.has(key)) return wikiCache.get(key);
   const url = 'https://www.wikidata.org/w/api.php?action=wbsearchentities&type=item&limit=20&format=json&origin=*&language=fr&uselang=fr&search='
     + encodeURIComponent(q);
@@ -1244,7 +1324,7 @@ async function wikiSearch(cfg, q) {
   if (!res.ok) throw new Error('Wikidata ' + res.status);
   const j = await res.json();
   const seen = new Set();
-  const out = (j.search || []).filter(r => r.label && cfg.desc.test(r.description || '')).map(r => ({ content: r.label, key: norm(r.label), f: fold(r.label), wiki: true, wid: r.id }))
+  const out = (j.search || []).filter(r => r.label && cfg.desc.test(r.description || '')).map(r => ({ content: r.label, key: norm(r.label), f: fold(r.label), wiki: true, wid: r.id, soft: true, sub: (r.description || '').slice(0, 60) }))
     .filter(r => !seen.has(r.key) && seen.add(r.key));
   wikiCache.set(key, out);
   return out;
@@ -3090,7 +3170,7 @@ let fillTopic = null;
 let fillExisting = null;   // ma réponse existante (modification)
 let fillItems = [];        // 5 × { content, ext_id?, year?, poster? }
 let fillPool = [];
-let fillWiki = null;       // config Wikidata du sujet (football…), ou null
+let fillWiki = null;       // source souple du sujet (Wikidata, OpenStreetMap, Open Food Facts), ou null
 let fillMedia = null;      // 'movie' | 'tv' si le sujet est relié à TMDB
 
 const emptyItem = () => ({ content: '' });
@@ -3219,6 +3299,12 @@ function renderFillRows() {
           o.innerHTML = mediaImg(p, fillMedia)
             + `<div><div>${esc(p.content)}${p.year ? ` <small>${p.year}</small>` : ''}</div>`
             + (p.orig && fold(p.orig) !== fold(p.content) ? `<small>${esc(p.orig)}</small>` : '') + '</div>';
+        } else if (p.soft) {
+          o.className = 'ac-opt media';
+          const ico = p.poster?.startsWith('cc:') ? flagOf(p.poster.slice(3)) : '';
+          o.innerHTML = (p.poster?.startsWith('off:') ? `<img class="ac-poster sq" src="${esc(offImg(p.poster))}" alt="" loading="lazy" onerror="this.outerHTML='<div class=&quot;ac-poster sq&quot;>🛒</div>'">`
+              : `<div class="ac-poster sq" style="background:none;font-size:18px">${ico || (p.wiki ? '📖' : '📍')}</div>`)
+            + `<div><div>${esc(p.content)}</div>${p.sub ? `<small>${esc(p.sub)}</small>` : ''}</div>`;
         } else {
           o.className = 'ac-opt';
           o.textContent = p.content;
@@ -3288,12 +3374,14 @@ function renderFillRows() {
         const my = ++seq;
         timer = setTimeout(async () => {
           let res;
-          try { res = await wikiSearch(fillWiki, inp.value.trim()); } catch (e) { return; }
+          try { res = await softSearch(fillWiki, inp.value.trim()); } catch (e) { return; }
           if (my !== seq || fold(inp.value) !== q) return;
+          // Une réponse de la communauté qui existe aussi dans la base : on affiche la version officielle à sa place
+          const official = new Map(res.map(r => [r.key, r]));
           const have = new Set(local.map(p => p.key));
           const extra = res.filter(r => !taken.has(r.key) && r.key !== cur && !have.has(r.key));
-          show([...local, ...extra].slice(0, 8));
-        }, 350);
+          show([...local.map(p => official.get(p.key) || p), ...extra].slice(0, 8));
+        }, fillWiki.src === 'off' ? 700 : 350);
       }
     };
     inp.addEventListener('input', () => {
@@ -3324,6 +3412,9 @@ function renderFillRows() {
     ENTITY[fillMedia].src === 'tmdb'
       ? '<p class="tmdb-note">Données films et séries : <strong>TMDB</strong>. Ce produit utilise l\'API TMDB mais n\'est ni approuvé ni certifié par TMDB.</p>'
       : '<p class="tmdb-note">Données musicales : <strong>Deezer</strong>.</p>');
+  else if (fillWiki) box.insertAdjacentHTML('beforeend', '<p class="tmdb-note">Suggestions : '
+    + { wd: '<strong>Wikidata</strong> (CC0)', osm: '© les contributeurs d\'<strong>OpenStreetMap</strong> (ODbL)', off: '<strong>Open Food Facts</strong> (ODbL)' }[fillWiki.src]
+    + '. Tu peux aussi écrire ta propre réponse.</p>');
 }
 
 async function publishFill() {
@@ -3357,7 +3448,11 @@ async function publishFill() {
       top_id: topId, rank: i + 1, content: v.content,
       ...(hasMedia ? { ext_id: v.ext_id || null, year: v.year || null, poster: v.poster || null } : {}),
     }));
-    const { error: itemsErr } = await sb.from('top_items').insert(rows);
+    let { error: itemsErr } = await sb.from('top_items').insert(rows);
+    if (itemsErr && itemsErr.code === '23514' && rows.some(r => /^(osm|off):/.test(r.ext_id || ''))) {
+      rows.forEach(r => { if (/^(osm|off):/.test(r.ext_id || '')) { r.ext_id = null; r.poster = null; } });
+      ({ error: itemsErr } = await sb.from('top_items').insert(rows));
+    }
     if (itemsErr) {
       if (isNew) await sb.from('tops').delete().eq('id', topId);
       throw itemsErr;
