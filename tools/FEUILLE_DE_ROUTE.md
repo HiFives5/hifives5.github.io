@@ -21,7 +21,7 @@ Décisions prises avec Lionel, à reprendre **uniquement quand il le demande**.
 
 ## Autres idées en attente
 
-- Tableau de stats des défis sponsorisés dans la page admin (participation sponsorisé vs classique).
+- Tableau de stats des défis sponsorisés dans la page admin (participation sponsorisé vs classique). Les bandeaux publicitaires ont déjà leurs stats (migration 016).
 - Recréer la ligne Danette du 2 octobre (historique de points parfait) — écrit dans la base, à confirmer.
 - Extrait audio Deezer de 30 s sur les tops chansons.
 - Partage en image (carte visuelle du top) en plus du texte + lien.

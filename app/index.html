@@ -221,6 +221,16 @@ textarea.input{resize:none;min-height:80px}
 .ad-tag{font-size:9px;font-weight:700;color:var(--t3);border:1px solid var(--b2);border-radius:4px;padding:2px 5px;flex-shrink:0;letter-spacing:.5px}
 .ad-txt{flex:1;font-size:12px;color:var(--t2)}
 .ad-cta{font-size:12px;font-weight:700;color:var(--orange);flex-shrink:0}
+.ad.pub{cursor:pointer;align-items:center}
+.pub-ico{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+.ad.pub .ad-txt strong{color:var(--text);font-size:13px}
+.ad.pub .ad-tag.ex{margin-left:4px;vertical-align:1px}
+.pub-adm{margin:0 16px 10px;padding:12px 14px}
+.pub-adm .ad{margin:0 0 8px}
+.pub-stats{font-size:12px;color:var(--t3);display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.pub-form .input{margin-bottom:8px;font-size:14px}
+.pub-form .row2{display:flex;gap:8px}
+.pub-form .row2 > *{flex:1;min-width:0}
 
 /* ── CREATE ── */
 .prog-bg{height:3px;background:var(--bg3);flex-shrink:0}
@@ -460,7 +470,7 @@ textarea.input{resize:none;min-height:80px}
       <div id="sugg-box"></div>
       <div class="slbl">À remplir <a onclick="navTo('search')">Voir tous les sujets →</a></div>
       <div id="todo-list"></div>
-      <div class="ad"><div class="ad-tag">PUB</div><div class="ad-txt"><strong style="color:var(--text)">Emplacement publicitaire</strong> — version sans pub bientôt disponible</div><div class="ad-cta">Info →</div></div>
+      <div id="pub-home"></div>
     </div>
     <div id="home-activity" style="display:none"></div>
   </div>
@@ -786,10 +796,12 @@ textarea.input{resize:none;min-height:80px}
     <div class="back-btn" onclick="goBack()">←</div>
     <div>
       <div class="hdr-kicker" style="color:var(--t3)">Administration</div>
-      <div class="hdr-title">🛠️ Retours utilisateurs</div>
+      <div class="hdr-title">🛠️ Administration</div>
     </div>
   </div>
   <div class="scroll" style="padding:12px 0 24px">
+    <div id="pub-admin"></div>
+    <div class="slbl">💬 Retours utilisateurs</div>
     <div id="ad-kpis"></div>
     <div class="fscr" id="ad-filters" style="padding-top:0"></div>
     <div id="ad-list"></div>
@@ -886,7 +898,7 @@ const UNLOCKS = [
   { s: '✉️ Messagerie (bientôt)', a: '💞 Âmes sœurs par thème · ⚡ vos désaccords' },
   { s: '✨ Cadre bronze', a: '🧲 Tes 10 meilleures affinités · 🙃 Tes opposés' },
   { s: '🗳️ Vote du thème sponsorisé (bientôt)', a: '🎁 Les recos de tes affinités' },
-  { s: '✨ Cadre argent · 🗳️ proposer un défi (bientôt)', a: '🧭 Ta tribu' },
+  { s: '✨ Cadre argent · 🚫 Plus de pub · 🗳️ proposer un défi (bientôt)', a: '🧭 Ta tribu' },
   { s: '🗳️ Un sujet à la une (bientôt)', a: '📡 Radar d\'âmes sœurs' },
   { s: '✨ Cadre or · classement des Légendes (bientôt)', a: '🧬 Ton ADN de goûts' },
 ];
@@ -1022,6 +1034,10 @@ async function loadData() {
   sponsoredNext = all.find(c => t0(c) > now) || null;
   // Commentaires disponibles ? (migration 013)
   if (hasComments === null) { const cm = await sb.from('comments').select('id').limit(1); hasComments = !cm.error; }
+  // Publicités actives (migration 016)
+  const pb = await sb.from('ads').select('*').eq('active', true).order('created_at');
+  hasAds = !pb.error;
+  adsList = (pb.data || []).filter(a => new Date(a.starts_at) <= new Date() && (!a.ends_at || new Date(a.ends_at) > new Date()));
   if (hasComments && !badgeDefs.length) {
     const { data } = await sb.from('badges').select('*').order('sort');
     badgeDefs = data || [];
@@ -1035,6 +1051,7 @@ let hasMedia = null;
 let sponsored = [];   // défis sponsorisés en cours
 let hasComments = null;   // migration 013 exécutée ? (commentaires + badges)
 let badgeDefs = [];       // catalogue des badges
+let hasAds = false, adsList = [], pubShown = new Set();   // régie publicitaire maison (migration 016)
 const CMT_SEL = () => hasComments ? ',comments(count)' : '';
 let sponsoredPast = [];   // défis passés (60 jours), du plus récent au plus ancien
 let sponsoredNext = null; // prochain défi (teaser)
@@ -1684,6 +1701,9 @@ function topicRow(t, counts, mine, why) {
 }
 
 function renderHome() {
+  pubShown = new Set();
+  $('pub-home').innerHTML = pubSlot(null);
+  watchPubs($('pub-home'));
   // Nouveaux venus : une carte vers l'aide, jusqu'à ce qu'ils l'ouvrent ou la ferment
   $('help-tip').innerHTML = !readPref('helpSeen', false) && (profile?.tops_filled ?? 0) < 5
     ? `<div class="insight help-tip" onclick="openHelp()"><span class="x" onclick="event.stopPropagation();writePref('helpSeen',true);$('help-tip').innerHTML=''">×</span>
@@ -1755,10 +1775,12 @@ async function renderActivity() {
     .limit(60);
   if (error) { box.innerHTML = '<div class="empty"><div class="empty-ico">😕</div>Erreur de chargement</div>'; return; }
   if (data.some(t => !topicById(t.topic_id))) { try { await loadData(); } catch (e) {} }
+  pubShown = new Set();
   const rows = data.filter(t => matchesFilters(t.profiles, 'home')).slice(0, 25);
   box.innerHTML = rows.length
-    ? rows.map(t => topCard(t, true)).join('')
+    ? rows.map((t, i) => topCard(t, true) + ((i + 1) % 8 === 0 && i < rows.length - 1 ? pubSlot(topicById(t.topic_id)?.category, true) : '')).join('')
     : '<div class="empty"><div class="empty-ico">✋</div>Pas encore d\'activité.</div>';
+  watchPubs(box);
 }
 
 // Carte "réponse" (le top 5 d'une personne)
@@ -2312,6 +2334,145 @@ async function renderTopic(id) {
   $('tp-recent').innerHTML = rows.length
     ? rows.map(r => topCard({ ...r, top_items: byTop[r.id] || [] }, false)).join('')
     : '<div style="font-size:13px;color:var(--t3);padding:0 20px 16px">Aucune réponse pour l\'instant.</div>';
+}
+
+// ─────────────────────────────────────────
+// PUBLICITÉ : régie maison (bandeaux gérés dans la page admin, mention « PUB » toujours visible)
+// ─────────────────────────────────────────
+const NO_PUB_LEVEL = 8;
+// Un bandeau pour cet emplacement : tirage pondéré, le thème ciblé compte triple ; pas deux fois le même par écran
+function pubSlot(category, inFeed) {
+  if (!hasAds || myLevel() >= NO_PUB_LEVEL) return '';
+  let c = adsList.filter(a => !pubShown.has(a.id) && (!a.category || a.category === category));
+  if (!c.length) c = adsList.filter(a => !a.category || a.category === category);
+  if (!c.length) return '';
+  const w = a => a.weight * (category && a.category === category ? 3 : 1);
+  let r = Math.random() * c.reduce((x, a) => x + w(a), 0);
+  const a = c.find(a => (r -= w(a)) < 0) || c[0];
+  pubShown.add(a.id);
+  return pubHtml(a, inFeed ? 'margin:0 16px 14px' : '');
+}
+function pubHtml(a, style = '', preview = false) {
+  const ico = a.emoji ? `<div class="pub-ico" style="background:${a.color}22">${esc(a.emoji)}</div>` : '';
+  return `<div class="ad pub" ${preview ? '' : `data-ad="${a.id}" onclick="pubGo('${a.id}')"`} style="border-color:${a.color}55;${style}">
+    ${ico}<div class="ad-txt"><div><span class="ad-tag">PUB</span>${a.is_example ? '<span class="ad-tag ex">Exemple</span>' : ''}</div>
+      <strong>${esc(a.title)}</strong>${a.body ? `<br>${esc(a.body)}` : ''}</div>
+    ${a.cta_label ? `<div class="ad-cta" style="color:${a.color}">${esc(a.cta_label)} →</div>` : ''}</div>`;
+}
+// Affichages comptés quand le bandeau est vraiment visible (au moins à moitié), regroupés par envoi
+let pubSeenQueue = [], pubSeenTimer = null;
+const pubSeenDone = new Set();
+function watchPubs(root) {
+  if (!hasAds || !('IntersectionObserver' in window)) return;
+  const io = new IntersectionObserver(es => es.forEach(e => {
+    if (!e.isIntersecting) return;
+    io.unobserve(e.target);
+    const id = e.target.dataset.ad;
+    // Une fois par bandeau et par écran ouvert
+    const k = id + '|' + (stack[stack.length - 1] || '') + '|' + lastLoad;
+    if (pubSeenDone.has(k)) return;
+    pubSeenDone.add(k);
+    pubSeenQueue.push(id);
+    clearTimeout(pubSeenTimer);
+    pubSeenTimer = setTimeout(() => { const ids = pubSeenQueue.splice(0, 10); if (ids.length) sb.rpc('ad_seen', { ids }).then(() => {}, () => {}); }, 1500);
+  }), { threshold: 0.5 });
+  root.querySelectorAll('[data-ad]').forEach(el => io.observe(el));
+}
+function pubGo(id) {
+  const a = adsList.find(x => x.id === id);
+  if (!a) return;
+  sb.rpc('ad_click', { ad: id }).then(() => {}, () => {});
+  if (a.cta_url === 'hifives:share') return shareApp();
+  if (a.cta_url === 'hifives:partner') {
+    openFeedback(); fbKind = 'idee'; renderFbControls();
+    $('fb-msg').value = 'Partenariat / publicité : ';
+    return;
+  }
+  if (a.cta_url && a.cta_url.startsWith('https://')) window.open(a.cta_url, '_blank', 'noopener');
+}
+// Inviter des amis (sans top particulier)
+async function shareApp() {
+  const url = `${location.origin}${location.pathname}`;
+  const text = `✋ Je compare mes goûts sur HiFives : films, musique, voyages… Fais tes tops et découvre si on est compatibles 👉 ${url}`;
+  try { if (navigator.share) return await navigator.share({ text }); } catch (e) { if (e.name === 'AbortError') return; }
+  window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
+}
+
+// Admin : gestion des bandeaux et statistiques
+let pubEdit = null;   // bandeau en cours de modification (ou {} pour un nouveau)
+let pubAdminList = [];
+async function renderPubAdmin() {
+  const box = $('pub-admin');
+  if (!hasAds) { box.innerHTML = '<div class="slbl">📣 Publicités</div><p class="hint" style="padding:0 20px">Exécute la migration 016 pour activer la régie publicitaire.</p>'; return; }
+  const { data, error } = await sb.from('ads').select('*').order('created_at', { ascending: false });
+  if (error) { box.innerHTML = `<div class="empty">Erreur : ${esc(error.message)}</div>`; return; }
+  const list = pubAdminList = data || [];
+  const tot = list.reduce((x, a) => ({ v: x.v + a.impressions, c: x.c + a.clicks }), { v: 0, c: 0 });
+  const ctr = (c, v) => v ? (100 * c / v).toFixed(1).replace('.', ',') + ' %' : '–';
+  const d = x => x ? new Date(x).toLocaleDateString('fr-FR') : '';
+  box.innerHTML = `<div class="slbl">📣 Publicités <a onclick="pubEdit={};renderPubAdmin()">＋ Nouveau bandeau</a></div>
+    <div class="kpis" style="margin-bottom:12px"><div class="kpi"><b>${list.filter(a => a.active).length}</b><span>Actifs</span></div>
+      <div class="kpi"><b>${tot.v}</b><span>Affichages</span></div><div class="kpi"><b>${tot.c}</b><span>Clics</span></div><div class="kpi"><b>${ctr(tot.c, tot.v)}</b><span>Taux de clic</span></div></div>
+    ${pubEdit ? pubForm(pubEdit) : ''}
+    ${list.map(a => `<div class="card pub-adm" style="${a.active ? '' : 'opacity:.55'}">
+      ${pubHtml(a, '', true)}
+      <div class="pub-stats"><span>${a.active ? '🟢 Actif' : '⚪ Inactif'}</span><span>👁 ${a.impressions}</span><span>👆 ${a.clicks}</span><span>${ctr(a.clicks, a.impressions)}</span>
+        <span>${a.category ? '🎯 ' + esc(a.category) : '🌍 Partout'}</span><span>⚖️ ${a.weight}</span>${a.ends_at || a.starts_at > new Date().toISOString() ? `<span>📅 ${d(a.starts_at)} → ${d(a.ends_at) || '…'}</span>` : ''}</div>
+      <div class="row" style="gap:8px">
+        <button class="act" onclick="pubToggle('${a.id}',${!a.active})">${a.active ? '⏸ Désactiver' : '▶️ Activer'}</button>
+        <button class="act" onclick="pubEdit=pubAdminList.find(x => x.id === '${a.id}');renderPubAdmin()">✏️ Modifier</button>
+        <button class="act" onclick="pubDelete('${a.id}')">🗑</button></div></div>`).join('') || '<p class="hint" style="padding:0 20px">Aucun bandeau.</p>'}`;
+}
+function pubForm(a) {
+  const v = k => esc(a[k] ?? '');
+  const day = x => x ? new Date(x).toISOString().slice(0, 10) : '';
+  return `<div class="card pub-adm pub-form">
+    <div style="font-weight:800;margin-bottom:10px">${a.id ? 'Modifier le bandeau' : 'Nouveau bandeau'}</div>
+    <div class="row2"><input id="pf-emoji" class="input" maxlength="8" placeholder="Emoji" value="${v('emoji')}" style="max-width:80px">
+      <input id="pf-title" class="input" maxlength="60" placeholder="Titre (obligatoire)" value="${v('title')}"></div>
+    <input id="pf-body" class="input" maxlength="140" placeholder="Texte (140 caractères max)" value="${v('body')}">
+    <div class="row2"><input id="pf-cta" class="input" maxlength="30" placeholder="Bouton (ex. Découvrir)" value="${v('cta_label')}">
+      <input id="pf-color" class="input" type="color" value="${a.color || '#FF5C2E'}" style="max-width:70px;padding:4px"></div>
+    <input id="pf-url" class="input" maxlength="300" placeholder="Lien https://… (ou hifives:share / hifives:partner)" value="${v('cta_url')}" autocapitalize="off">
+    <div class="row2"><select id="pf-cat" class="input"><option value="">🌍 Partout</option>${CATEGORIES.map(c => `<option ${a.category === c.k ? 'selected' : ''} value="${c.k}">${c.i} ${c.k}</option>`).join('')}</select>
+      <select id="pf-weight" class="input">${[1, 2, 3, 5, 10].map(n => `<option ${(a.weight || 1) === n ? 'selected' : ''} value="${n}">Poids ${n}</option>`).join('')}</select></div>
+    <div class="row2"><label class="hint" style="margin:0">Début<input id="pf-start" class="input" type="date" value="${day(a.starts_at)}"></label>
+      <label class="hint" style="margin:0">Fin (facultatif)<input id="pf-end" class="input" type="date" value="${day(a.ends_at)}"></label></div>
+    <div class="row" style="gap:8px;margin-top:4px">
+      <button class="btn btn-primary" style="height:42px;font-size:14px;flex:1" onclick="pubSave()">Enregistrer</button>
+      <button class="btn btn-ghost" style="height:42px;font-size:14px;flex:1" onclick="pubEdit=null;renderPubAdmin()">Annuler</button></div>
+    <p class="hint" style="margin-top:8px">La mention « PUB » est toujours affichée. Pas d'alcool ni de tabac (loi Évin). Le poids règle la fréquence dans la rotation ; un thème ciblé apparaît 3× plus souvent à côté des tops de ce thème.</p></div>`;
+}
+async function pubSave() {
+  const val = id => $(id).value.trim();
+  const url = val('pf-url');
+  if (!val('pf-title')) return toast('Le titre est obligatoire');
+  if (url && !/^(https:\/\/\S+|hifives:(share|partner))$/.test(url)) return toast('Lien : https://… ou hifives:share / hifives:partner');
+  const row = {
+    title: val('pf-title'), body: val('pf-body') || null, emoji: val('pf-emoji') || null, color: $('pf-color').value,
+    cta_label: val('pf-cta') || null, cta_url: url || null, category: $('pf-cat').value || null, weight: parseInt($('pf-weight').value, 10),
+    starts_at: val('pf-start') ? new Date(val('pf-start') + 'T00:00:00').toISOString() : new Date().toISOString(),
+    ends_at: val('pf-end') ? new Date(val('pf-end') + 'T23:59:59').toISOString() : null,
+  };
+  const { error } = pubEdit.id ? await sb.from('ads').update(row).eq('id', pubEdit.id) : await sb.from('ads').insert(row);
+  if (error) return toast('Erreur : ' + error.message);
+  toast('Bandeau enregistré ✓');
+  pubEdit = null;
+  await loadData();
+  renderPubAdmin();
+}
+async function pubToggle(id, active) {
+  const { error } = await sb.from('ads').update({ active }).eq('id', id);
+  if (error) return toast('Erreur : ' + error.message);
+  await loadData();
+  renderPubAdmin();
+}
+async function pubDelete(id) {
+  if (!confirm('Supprimer ce bandeau et ses statistiques ?')) return;
+  const { error } = await sb.from('ads').delete().eq('id', id);
+  if (error) return toast('Erreur : ' + error.message);
+  await loadData();
+  renderPubAdmin();
 }
 
 // ─────────────────────────────────────────
@@ -3041,6 +3202,8 @@ async function renderMyFeedback() {
 // Admin : traiter les retours
 function openAdmin() {
   pushPage('admin');
+  pubEdit = null;
+  renderPubAdmin();
   renderAdmin();
 }
 
