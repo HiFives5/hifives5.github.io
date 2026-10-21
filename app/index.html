@@ -226,6 +226,12 @@ textarea.input{resize:none;min-height:80px}
 .ad.pub .ad-txt strong{color:var(--text);font-size:13px}
 .ad.pub .ad-tag.ex{margin-left:4px;vertical-align:1px}
 .pub-adm{margin:0 16px 10px;padding:12px 14px}
+#pub-sticky{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(64px + var(--safe-b));width:100%;max-width:430px;z-index:90;display:none;padding:0 8px 6px}
+#pub-sticky .ad{margin:0;padding:7px 10px;gap:8px;background:var(--card2);box-shadow:0 -4px 18px rgba(0,0,0,.35)}
+#pub-sticky .pub-ico{width:30px;height:30px;font-size:16px;border-radius:9px}
+#pub-sticky .ad-txt{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#pub-sticky .pub-x{font-size:17px;color:var(--t3);padding:2px 4px 2px 8px;cursor:pointer;flex-shrink:0}
+body.has-sticky .page{padding-bottom:calc(128px + var(--safe-b))}
 .pub-adm .ad{margin:0 0 8px}
 .pub-stats{font-size:12px;color:var(--t3);display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px}
 .pub-form .input{margin-bottom:8px;font-size:14px}
@@ -848,6 +854,7 @@ textarea.input{resize:none;min-height:80px}
 
 <div id="toast"></div>
 
+<div id="pub-sticky"></div>
 <div id="nav">
   <button class="nav-btn active" id="nav-home" onclick="navTo('home')"><div class="nav-ico">🏠</div><div class="nav-lbl">Accueil</div></button>
   <button class="nav-btn" id="nav-search" onclick="navTo('search')"><div class="nav-ico">🔍</div><div class="nav-lbl">Sujets</div></button>
@@ -1468,6 +1475,7 @@ function showPage(name) {
   const tab = TABS.includes(name) ? name : stack[0];
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.id === 'nav-' + tab));
   window.scrollTo(0, 0);
+  setTimeout(() => updateSticky(name), 0);
 }
 
 function navTo(tab) {
@@ -2390,6 +2398,32 @@ function pubGo(id) {
   }
   if (a.cta_url && a.cta_url.startsWith('https://')) window.open(a.cta_url, '_blank', 'noopener');
 }
+// Bandeau fixe en bas : compact, uniquement sur Accueil / Sujets / Affinités, fermable jusqu'à la prochaine ouverture
+const STICKY_PAGES = ['home', 'search', 'affinities'];
+let stickyClosed = false;
+function updateSticky(page) {
+  const box = $('pub-sticky');
+  const on = hasAds && !stickyClosed && myLevel() < NO_PUB_LEVEL && STICKY_PAGES.includes(page) && stack[stack.length - 1] === page;
+  // Un autre bandeau que ceux déjà affichés sur l'écran, si possible
+  const c0 = adsList.filter(a => !a.category), c = c0.filter(a => !pubShown.has(a.id));
+  const list = c.length ? c : c0.length ? c0 : adsList;
+  if (!on || !list.length) { box.style.display = 'none'; box.innerHTML = ''; document.body.classList.remove('has-sticky'); return; }
+  let r = Math.random() * list.reduce((x, a) => x + a.weight, 0);
+  const a = list.find(a => (r -= a.weight) < 0) || list[0];
+  box.innerHTML = `<div class="ad pub" data-ad="${a.id}" onclick="pubGo('${a.id}')" style="border-color:${a.color}55">
+    ${a.emoji ? `<div class="pub-ico" style="background:${a.color}22">${esc(a.emoji)}</div>` : ''}
+    <div class="ad-txt"><span class="ad-tag">PUB</span> <strong>${esc(a.title)}</strong></div>
+    ${a.cta_label ? `<div class="ad-cta" style="color:${a.color}">${esc(a.cta_label)} →</div>` : ''}
+    <div class="pub-x" title="Masquer" onclick="event.stopPropagation();closeSticky()">×</div></div>`;
+  box.style.display = 'block';
+  document.body.classList.add('has-sticky');
+  watchPubs(box);
+}
+function closeSticky() {
+  stickyClosed = true;
+  updateSticky(null);
+}
+
 // Inviter des amis (sans top particulier)
 async function shareApp() {
   const url = `${location.origin}${location.pathname}`;
