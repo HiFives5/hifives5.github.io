@@ -42,6 +42,7 @@ Les évolutions se font par des fichiers `supabase/migrations/NNN_*.sql`, à ex�
 - `014_niveaux_deblocages.sql` : échelle à 10 niveaux ; garde-fous vérifiés par la base (commenter : niveau 2, créer un sujet : niveau 3) ; titre sous le pseudo (un de ses badges, niveau 4).
 - `015_sources_souples.sql` : suggestions OpenStreetMap (lieux) et Open Food Facts (produits) avec identifiant et image.
 - `016_publicites.sql` : régie publicitaire maison (bandeaux gérés depuis la page admin, ciblage par thème, compteurs d'affichages et de clics agrégés, sans cookie).
+- `017_pubs_exemples.sql` : 57 exemples de bandeaux de marques (2 à 3 par thème), marqués « Exemple ».
 
 ### Défis sponsorisés
 Table Editor → `sponsored_challenges` (modifiable par les admins uniquement) :

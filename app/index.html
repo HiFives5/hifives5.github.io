@@ -645,6 +645,7 @@ body.has-sticky .page{padding-bottom:calc(128px + var(--safe-b))}
       <div><div style="font-size:13px;font-weight:700">Inclure les profils de démo</div><div style="font-size:11px;color:var(--t3);margin-top:2px">Réponses fictives pour tester l'appli</div></div>
     </label>
     <div id="p-badges"></div>
+    <div id="p-pub"></div>
     <div id="p-hi5"></div>
     <div id="p-cmts"></div>
     <div class="slbl">Mes tops</div>
@@ -718,6 +719,7 @@ body.has-sticky .page{padding-bottom:calc(128px + var(--safe-b))}
     </div>
     <div id="up-match"></div>
     <div id="up-badges"></div>
+    <div id="up-pub"></div>
     <div class="slbl">Ses tops</div>
     <div id="up-tops" style="padding-bottom:24px"></div>
   </div>
@@ -1709,9 +1711,9 @@ function topicRow(t, counts, mine, why) {
 }
 
 function renderHome() {
-  pubShown = new Set();
+  pubReset();
   $('pub-home').innerHTML = pubSlot(null);
-  watchPubs($('pub-home'));
+  let todoAd = null;   // même bandeau si la liste est réaffichée
   // Nouveaux venus : une carte vers l'aide, jusqu'à ce qu'ils l'ouvrent ou la ferment
   $('help-tip').innerHTML = !readPref('helpSeen', false) && (profile?.tops_filled ?? 0) < 5
     ? `<div class="insight help-tip" onclick="openHelp()"><span class="x" onclick="event.stopPropagation();writePref('helpSeen',true);$('help-tip').innerHTML=''">×</span>
@@ -1750,9 +1752,11 @@ function renderHome() {
     const todo = topics.filter(t => !mine.has(t.id) && !shown.has(t.id))
       .sort((a, b) => (counts[b.id] || 0) - (counts[a.id] || 0))
       .slice(0, 6);
+    if (todoAd === null) todoAd = pubSlot(null, true);
     $('todo-list').innerHTML = todo.length
-      ? todo.map(t => topicRow(t, counts, mine)).join('')
+      ? todo.map((t, i) => topicRow(t, counts, mine) + (i === 2 && todo.length > 3 ? todoAd : '')).join('')
       : '<div class="empty"><div class="empty-ico">🏆</div>Tu as rempli tous les sujets !<br>Propose le tien avec le bouton +</div>';
+    pubMount();
   };
   if (!suggCache) $('sugg-box').innerHTML = '<div class="slbl">✨ Suggérés pour toi</div>' + LOADER;
   getSuggestions().then(list => {
@@ -1783,10 +1787,10 @@ async function renderActivity() {
     .limit(60);
   if (error) { box.innerHTML = '<div class="empty"><div class="empty-ico">😕</div>Erreur de chargement</div>'; return; }
   if (data.some(t => !topicById(t.topic_id))) { try { await loadData(); } catch (e) {} }
-  pubShown = new Set();
+  pubReset();
   const rows = data.filter(t => matchesFilters(t.profiles, 'home')).slice(0, 25);
   box.innerHTML = rows.length
-    ? rows.map((t, i) => topCard(t, true) + ((i + 1) % 8 === 0 && i < rows.length - 1 ? pubSlot(topicById(t.topic_id)?.category, true) : '')).join('')
+    ? rows.map((t, i) => topCard(t, true) + ((i === 5 || i === 13) && i < rows.length - 1 ? pubSlot(topicById(t.topic_id)?.category, true) : '')).join('')
     : '<div class="empty"><div class="empty-ico">✋</div>Pas encore d\'activité.</div>';
   watchPubs(box);
 }
@@ -1860,6 +1864,7 @@ const POP_PRESETS = [
 
 // Ouvre un thème / un classement (null, null = retour à l'accueil) : la recherche repart à zéro
 function openSearchView(cat, pop) {
+  trackCat(cat);
   searchCat = cat;
   searchPop = pop;
   $('search-q').value = '';
@@ -1877,11 +1882,16 @@ function setSort(btn) {
   renderSearch();
 }
 
+let searchPubView = null, searchPubs = [];
 function renderSearch() {
   const q = fold($('search-q').value);
   const inCat = searchCat != null;
   const pop = POP_PRESETS.find(x => x.k === searchPop);
   const root = !inCat && !pop && !q;   // accueil : thèmes + populaires + suggestions
+  // Mêmes bandeaux tant qu'on reste sur la même vue (pas de nouveau tirage à chaque lettre tapée)
+  const view = (root ? 'root' : '') + '|' + searchCat + '|' + searchPop + '|' + lastLoad;
+  if (view !== searchPubView) { searchPubView = view; pubReset(); searchPubs = [pubSlot(searchCat, true), pubSlot(searchCat, true)]; }
+  pubMount();
 
   // En-tête : titre, ou retour + thème / classement ouvert
   const subTitle = inCat ? `${CAT_ICON[searchCat] || ''} ${esc(searchCat)}` : pop ? `${pop.i} ${pop.label}` : '';
@@ -1915,8 +1925,10 @@ function renderSearch() {
       `<div class="slbl">Thèmes</div><div class="cat-boxes">${shown.map(c =>
         box(`setCat('${c.k}')`, c.i, c.k, `${nbT[c.k] || 0} sujet${(nbT[c.k] || 0) > 1 ? 's' : ''}`)).join('')}</div>`
       + (cats.length > 9 ? `<div class="more-link" onclick="toggleAllCats()">${showAllCats ? 'Moins de thèmes ˄' : 'Autres thèmes ›'}</div>` : '')
+      + searchPubs[0]
       + `<div class="slbl">🔥 Populaires</div><div class="cat-boxes">${POP_PRESETS.map(x =>
         box(`setPop('${x.k}')`, x.i, x.label, 'Classement')).join('')}</div>`
+      + searchPubs[1]
       + `<div id="search-sugg"></div>`;
     // ✨ Suggestions algorithmiques : les 5 sujets les plus pertinents à remplir pour moi
     const counts = countByTopic('home');
@@ -1954,7 +1966,7 @@ function renderSearch() {
   const whyOf = !pop && searchSort === 'suggested' && suggCache ? new Map(suggCache.list.map(x => [x.t.id, x.why])) : new Map();
 
   $('search-results').innerHTML = list.length
-    ? list.map(t => topicRow(t, counts, mine, whyOf.get(t.id))).join('')
+    ? list.map((t, i) => topicRow(t, counts, mine, whyOf.get(t.id)) + (i === 3 && list.length > 4 ? searchPubs[0] : i === 11 && list.length > 12 ? searchPubs[1] : '')).join('')
     : pop ? '<div class="empty"><div class="empty-ico">🤷</div>Aucune réponse pour ce classement.</div>'
     : `<div class="empty"><div class="empty-ico">🔍</div>Aucun sujet trouvé${inCat ? ' dans ' + esc(searchCat) : ''}.<br><br>
        <button class="btn btn-primary" style="width:auto;padding:0 20px;height:44px" onclick="startCreate()">Créer ce sujet +</button></div>`;
@@ -2269,6 +2281,7 @@ async function openTopic(id) {
   if (!await ensureTopic(id)) return toast('Sujet introuvable');
   // Pas encore répondu → on remplit d'abord (pas d'influence, et les stats restent la récompense)
   if (!myAnswer(id)) return openFillById(id);
+  trackCat(topicById(id)?.category);
   setCurrentTopic(id);
   pushPage('topic');
   renderTopic(id);
@@ -2339,21 +2352,46 @@ async function renderTopic(id) {
   const byTop = {};
   items.forEach(it => (byTop[it.top_id] = byTop[it.top_id] || []).push(it));
   const rows = (recent || []).filter(r => matchesFilters(r.profiles, 'topic')).slice(0, 10);
+  pubReset();
+  const tcat = topicById(id)?.category;
+  const ad1 = pubSlot(tcat, true), ad2 = pubSlot(tcat, true);
   $('tp-recent').innerHTML = rows.length
-    ? rows.map(r => topCard({ ...r, top_items: byTop[r.id] || [] }, false)).join('')
+    ? rows.map((r, i) => topCard({ ...r, top_items: byTop[r.id] || [] }, false) + (i === 2 && rows.length > 3 ? ad2 : '')).join('')
     : '<div style="font-size:13px;color:var(--t3);padding:0 20px 16px">Aucune réponse pour l\'instant.</div>';
+  $('tp-recent').insertAdjacentHTML('afterbegin', ad1);
+  pubMount();
 }
 
 // ─────────────────────────────────────────
 // PUBLICITÉ : régie maison (bandeaux gérés dans la page admin, mention « PUB » toujours visible)
 // ─────────────────────────────────────────
 const NO_PUB_LEVEL = 8;
-// Un bandeau pour cet emplacement : tirage pondéré, le thème ciblé compte triple ; pas deux fois le même par écran
+const PUB_MAX = 2;      // bandeaux intégrés au maximum par écran (en plus du bandeau fixe)
+let pubInline = 0;
+function pubReset() { pubShown = new Set(); pubInline = 0; }
+// Thèmes consultés récemment (gardés sur le téléphone uniquement, jamais envoyés) : ciblage des bandeaux
+function trackCat(c) {
+  if (!c) return;
+  const r = readPref('recentCats', []);
+  r.push(c);
+  writePref('recentCats', r.slice(-30));
+}
+function favCat() {
+  const n = {};
+  readPref('recentCats', []).forEach(c => { n[c] = (n[c] || 0) + 1; });
+  return Object.entries(n).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+}
+// Compte les affichages des bandeaux de l'écran actif (après rendu)
+const pubMount = () => setTimeout(() => watchPubs(document.querySelector('.page.active') || document.body), 0);
+// Un bandeau pour cet emplacement : thème de la page, sinon thème le plus consulté ; tirage pondéré,
+// le thème ciblé compte triple ; pas deux fois le même par écran ; au plus PUB_MAX par écran
 function pubSlot(category, inFeed) {
-  if (!hasAds || myLevel() >= NO_PUB_LEVEL) return '';
+  if (!hasAds || myLevel() >= NO_PUB_LEVEL || pubInline >= PUB_MAX) return '';
+  category = category || favCat();
   let c = adsList.filter(a => !pubShown.has(a.id) && (!a.category || a.category === category));
   if (!c.length) c = adsList.filter(a => !a.category || a.category === category);
   if (!c.length) return '';
+  pubInline++;
   const w = a => a.weight * (category && a.category === category ? 3 : 1);
   let r = Math.random() * c.reduce((x, a) => x + w(a), 0);
   const a = c.find(a => (r -= w(a)) < 0) || c[0];
@@ -2405,11 +2443,14 @@ function updateSticky(page) {
   const box = $('pub-sticky');
   const on = hasAds && !stickyClosed && myLevel() < NO_PUB_LEVEL && STICKY_PAGES.includes(page) && stack[stack.length - 1] === page;
   // Un autre bandeau que ceux déjà affichés sur l'écran, si possible
-  const c0 = adsList.filter(a => !a.category), c = c0.filter(a => !pubShown.has(a.id));
+  const fav = favCat();
+  const c0 = adsList.filter(a => !a.category || a.category === fav), c = c0.filter(a => !pubShown.has(a.id));
   const list = c.length ? c : c0.length ? c0 : adsList;
   if (!on || !list.length) { box.style.display = 'none'; box.innerHTML = ''; document.body.classList.remove('has-sticky'); return; }
-  let r = Math.random() * list.reduce((x, a) => x + a.weight, 0);
-  const a = list.find(a => (r -= a.weight) < 0) || list[0];
+  const w = a => a.weight * (fav && a.category === fav ? 3 : 1);
+  let r = Math.random() * list.reduce((x, a) => x + w(a), 0);
+  const a = list.find(a => (r -= w(a)) < 0) || list[0];
+  pubShown.add(a.id);
   box.innerHTML = `<div class="ad pub" data-ad="${a.id}" onclick="pubGo('${a.id}')" style="border-color:${a.color}55">
     ${a.emoji ? `<div class="pub-ico" style="background:${a.color}22">${esc(a.emoji)}</div>` : ''}
     <div class="ad-txt"><span class="ad-tag">PUB</span> <strong>${esc(a.title)}</strong></div>
@@ -2823,8 +2864,11 @@ async function renderTwins() {
   const twins = (suggCache.twins || []).slice(0, lvl >= 6 ? 10 : 3), soul = suggCache.soulmates || [];
   const pl = (n, w) => `${n} ${w}${n > 1 ? 's' : ''}`;
   if (lvl < 4) {
+    pubReset();
     box.innerHTML = '<div class="slbl">🧲 Tes plus grandes affinités</div>' + lockBox(4, 'découvre les 3 personnes qui ont les goûts les plus proches des tiens.')
+      + pubSlot(null, true)
       + '<div class="slbl">💞 Tes âmes sœurs par thème</div>' + lockBox(5, 'ton âme sœur en Cinéma, en Musique, en Sport…');
+    pubMount();
     return;
   }
   box.innerHTML = '<div class="slbl">🧲 Tes plus grandes affinités</div>' + (twins.length
@@ -2840,7 +2884,9 @@ async function renderTwins() {
         <div style="font-size:22px;width:34px;text-align:center">${CAT_ICON[x.c] || '⭐'}</div>
         <div class="hi5-txt"><strong>${esc(x.c)}</strong><div class="topic-meta"><span class="who">${esc(x.handle)}</span> · sur ${pl(x.n, 'sujet')}</div></div>
         <div class="af-pct">${x.pct} %</div></div>`).join('') : '');
-  box.innerHTML += affExtras(lvl);
+  pubReset();
+  box.innerHTML += pubSlot(null, true) + affExtras(lvl) + pubSlot(null, true);
+  pubMount();
 }
 
 // Nouveautés des niveaux 6 à 10 (affichées après les âmes sœurs)
@@ -2971,7 +3017,10 @@ function renderAfResults() {
   const box = $('af-results');
   if (!afGroups.length) { box.innerHTML = '<div class="empty"><div class="empty-ico">🔎</div>Personne n\'a encore mis ça dans un top.</div>'; return; }
   if (afSel !== null && afGroups[afSel]) return renderAfDetail(afGroups[afSel]);
-  box.innerHTML = `<div class="slbl">${afGroups.length} résultat${afGroups.length > 1 ? 's' : ''}</div>` + afGroups.slice(0, 30).map((g, i) => {
+  pubReset();
+  const afAds = [pubSlot(null, true), pubSlot(null, true)];
+  pubMount();
+  box.innerHTML = `<div class="slbl">${afGroups.length} résultat${afGroups.length > 1 ? 's' : ''}</div>` + afGroups.slice(0, 30).map((g, i) => (i === 4 ? afAds[0] : i === 12 ? afAds[1] : '') + (() => {
     const t = topicById(g.topicId);
     const n = g.people.length;
     const first = g.people.filter(x => x.rank === 1).length;
@@ -2984,7 +3033,7 @@ function renderAfResults() {
         <div class="topic-why">${n} personne${n > 1 ? 's l\'ont dans leur top' : ' l\'a dans son top'}${first ? ` · ${first}× en n°1` : ''}${meToo ? ' · dont toi ✓' : ''}</div>
       </div>
       <div style="font-size:16px;color:var(--t3)">›</div></div>`;
-  }).join('');
+  })()).join('');
 }
 
 function renderAfDetail(g) {
@@ -3354,6 +3403,10 @@ async function renderAnswer(topId) {
     </div>
     ${mine ? `<div class="block"><div class="block-lbl">Mon top 5</div>${list(myItems, theirKeys)}</div>`
            : `<div class="insight" style="margin:12px 16px"><div class="ins-text">🔒 Tu n'as pas encore rempli ce sujet. Fais ton top pour voir ce que vous avez en commun et débloquer le classement.</div></div>`}`;
+  trackCat(topic.category);
+  pubReset();
+  $('an-body').insertAdjacentHTML('beforeend', pubSlot(topic.category, true));
+  pubMount();
 
   const btn = $('an-btn');
   btn.textContent = mine ? 'Voir le classement du sujet' : 'Faire le mien →';
@@ -3379,6 +3432,7 @@ async function openFillById(id) {
 }
 
 async function openFill(topic, replace) {
+  trackCat(topic.category);
   fillTopic = topic;
   fillExisting = myAnswer(topic.id) || null;
   fillMedia = isMedia(topic) ? topic.entity_type : null;
@@ -3941,6 +3995,9 @@ async function renderProfile() {
   $('p-xp-next').textContent = next ? `${next - pts} pts avant le niveau ${lvl + 1} (${LEVEL_NAMES[lvl]})` : 'Niveau max atteint 🏆';
   $('demo-toggle').checked = includeDemo;
   $('my-tops').innerHTML = myTopRows(me.id, likes);
+  pubReset();
+  $('p-pub').innerHTML = pubSlot(null, true);
+  pubMount();
   renderMyFeedback();
   renderHi5Received();
   renderCommentsReceived();
@@ -4071,6 +4128,9 @@ async function renderUser(userId) {
   const likes = await fetchLikeCounts(userId);
   if (currentUserId !== userId) return;
   $('up-tops').innerHTML = myTopRows(userId, likes);
+  pubReset();
+  $('up-pub').innerHTML = pubSlot(null, true);
+  pubMount();
 }
 
 // ─────────────────────────────────────────
