@@ -26,3 +26,4 @@ Décisions prises avec Lionel, à reprendre **uniquement quand il le demande**.
 - Extrait audio Deezer de 30 s sur les tops chansons.
 - Partage en image (carte visuelle du top) en plus du texte + lien.
 - Surveiller les premiers seuils de niveaux (commenter niv. 2, créer niv. 3) : à baisser si les inscrits décrochent.
+- Vers le 4 novembre 2026 : faire le point sur la publicité (taux de clic par bandeau dans l'admin, retours des testeurs) ; si besoin, passer à 1 bandeau intégré par écran (constante PUB_MAX dans app/index.html).
