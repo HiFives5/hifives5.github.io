@@ -799,17 +799,26 @@ body.has-sticky .page{padding-bottom:calc(128px + var(--safe-b))}
 </div>
 
 <!-- ══════ ADMIN : TRAITER LES RETOURS ══════ -->
+<div id="page-adminpub" class="page">
+  <div class="sub-hdr">
+    <div class="back-btn" onclick="goBack()">←</div>
+    <div>
+      <div class="hdr-kicker" style="color:var(--t3)">Administration</div>
+      <div class="hdr-title">📣 Publicités</div>
+    </div>
+  </div>
+  <div class="scroll" style="padding:12px 0 24px"><div id="pub-admin"></div></div>
+</div>
+
 <div id="page-admin" class="page">
   <div class="sub-hdr">
     <div class="back-btn" onclick="goBack()">←</div>
     <div>
       <div class="hdr-kicker" style="color:var(--t3)">Administration</div>
-      <div class="hdr-title">🛠️ Administration</div>
+      <div class="hdr-title">💬 Retours utilisateurs</div>
     </div>
   </div>
   <div class="scroll" style="padding:12px 0 24px">
-    <div id="pub-admin"></div>
-    <div class="slbl">💬 Retours utilisateurs</div>
     <div id="ad-kpis"></div>
     <div class="fscr" id="ad-filters" style="padding-top:0"></div>
     <div id="ad-list"></div>
@@ -1464,6 +1473,7 @@ const RENDERERS = {
   user: () => renderUser(currentUserId),
   answer: () => renderAnswer(currentAnswerId),
   admin: () => renderAdmin(),
+  adminpub: () => renderPubAdmin(),
   help: () => renderHelp(),
   stat: () => renderStat(currentStat),
   affinities: () => renderAffinities(),
@@ -2485,7 +2495,7 @@ async function renderPubAdmin() {
   const tot = list.reduce((x, a) => ({ v: x.v + a.impressions, c: x.c + a.clicks }), { v: 0, c: 0 });
   const ctr = (c, v) => v ? (100 * c / v).toFixed(1).replace('.', ',') + ' %' : '–';
   const d = x => x ? new Date(x).toLocaleDateString('fr-FR') : '';
-  box.innerHTML = `<div class="slbl">📣 Publicités <a onclick="pubEdit={};renderPubAdmin()">＋ Nouveau bandeau</a></div>
+  box.innerHTML = `<div class="slbl">Bandeaux <a onclick="pubEdit={};renderPubAdmin()">＋ Nouveau bandeau</a></div>
     <div class="kpis" style="margin-bottom:12px"><div class="kpi"><b>${list.filter(a => a.active).length}</b><span>Actifs</span></div>
       <div class="kpi"><b>${tot.v}</b><span>Affichages</span></div><div class="kpi"><b>${tot.c}</b><span>Clics</span></div><div class="kpi"><b>${ctr(tot.c, tot.v)}</b><span>Taux de clic</span></div></div>
     ${pubEdit ? pubForm(pubEdit) : ''}
@@ -3218,7 +3228,7 @@ function pageContext() {
   if (cur === 'fill') return 'Saisie : ' + (fillTopic?.title || '');
   if (cur === 'success') return 'Résultat : ' + (fillTopic?.title || '');
   return { home: 'Accueil', search: 'Sujets', profile: 'Profil', affinities: 'Affinités', create: 'Création de sujet',
-           user: 'Profil d\'un membre', answer: 'Réponse d\'un membre', admin: 'Admin', help: 'Aide' }[cur] || cur;
+           user: 'Profil d\'un membre', answer: 'Réponse d\'un membre', admin: 'Admin · retours', adminpub: 'Admin · publicités', help: 'Aide' }[cur] || cur;
 }
 
 function openFeedback() {
@@ -3263,7 +3273,9 @@ async function renderMyFeedback() {
   let html = '';
   if (profile.is_admin) {
     const { count } = await sb.from('feedback').select('id', { count: 'exact', head: true }).eq('status', 'nouveau');
-    html += `<div style="padding:12px 16px 0"><button class="btn btn-primary" style="height:44px;font-size:14px" onclick="openAdmin()">🛠️ Retours utilisateurs${count ? ` (${count} nouveau${count > 1 ? 'x' : ''})` : ''}</button></div>`;
+    html += `<div style="padding:12px 16px 0" class="row">
+      <button class="btn btn-primary" style="flex:1;height:44px;font-size:14px" onclick="openAdmin()">💬 Retours${count ? ` (${count})` : ''}</button>
+      <button class="btn btn-ghost" style="flex:1;height:44px;font-size:14px" onclick="openPubAdmin()">📣 Publicités</button></div>`;
   }
   $('p-admin').innerHTML = html;
   html = '';
@@ -3285,9 +3297,12 @@ async function renderMyFeedback() {
 // Admin : traiter les retours
 function openAdmin() {
   pushPage('admin');
+  renderAdmin();
+}
+function openPubAdmin() {
+  pushPage('adminpub');
   pubEdit = null;
   renderPubAdmin();
-  renderAdmin();
 }
 
 async function renderAdmin() {
