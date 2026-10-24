@@ -3411,6 +3411,7 @@ async function renderAnswer(topId) {
         <div style="font-size:11px;color:var(--t3)">${timeAgo(t.created_at)}</div>
       </div>
       ${t.user_id === me.id ? '' : `<button class="act ${liked ? 'liked' : ''}" data-n="${likes.length}" data-h="${esc(p.handle)}" onclick="toggleLike('${t.id}',this)">✋ ${likes.length}</button>`}
+      ${hasComments ? `<button class="act" data-ctop="${t.id}" title="Commentaires" onclick="openComments('${t.id}')">💬 ${t.comments?.[0]?.count || 0}</button>` : ''}
     </div>
     <div class="block">
       <div class="block-lbl">Son top 5 ${mine ? `<span class="count-pill" style="${common ? 'color:var(--orange);background:var(--og)' : ''}">${common} en commun avec toi</span>` : ''}</div>
