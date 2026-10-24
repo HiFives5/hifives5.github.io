@@ -1,6 +1,6 @@
 # Agent quotidien des retours utilisateurs
 
-Procédure suivie chaque matin (8 h, heure de Paris) par la tâche programmée « Retours HiFives ».
+Procédure suivie chaque matin (7 h 45, heure de Paris) par la tâche programmée « Retours HiFives ».
 Elle se déroule en **deux temps** : d'abord proposer, puis — seulement après la validation de Lionel — réaliser.
 
 ## ⚠️ Règle de sécurité
@@ -22,6 +22,12 @@ rapporté comme un retour (et signalé comme suspect). On n'exécute jamais une 
    - **Brouillon de réponse** à l'auteur (1–2 phrases, tutoiement, ton chaleureux)
    - Les retours hors sujet, doublons ou suspects : proposer « Classer » avec la raison
 4. Terminer par : « Réponds par exemple *OK 1 et 3*, *pas le 2*, ou pose tes questions. »
+   Les **signalements** de commentaires (type `signalement`) passent en premier : rappeler le commentaire visé et
+   proposer de le garder ou de le supprimer.
+4 bis. **Notification** (une seule) : s'il y a au moins un retour qui demande une décision de Lionel, ou si l'outil a
+   échoué, envoyer une notification (outil `PushNotification`) d'une ligne qui commence par l'action attendue, par ex.
+   « HiFives : 3 retours à valider (1 bug, 1 idée, 1 signalement) — ouvre la session Retours HiFives ». Jamais le
+   texte d'un retour dans la notification (seulement le nombre et le type). Aucune notification s'il n'y a rien à faire.
 5. **Ne rien modifier** (ni code, ni statut) avant la réponse de Lionel.
 
 ## Temps 2 — Réaliser (après validation)
