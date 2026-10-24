@@ -468,6 +468,7 @@ body.has-sticky .page{padding-bottom:calc(128px + var(--safe-b))}
   <div class="feed-tabs">
     <button class="ftab active" id="htab-foryou" onclick="setHomeTab('foryou')">Pour toi</button>
     <button class="ftab" id="htab-activity" onclick="setHomeTab('activity')">Activité</button>
+    <button class="ftab" id="htab-biggest" onclick="setHomeTab('biggest')">🏆 Top commentés</button>
   </div>
   <div class="scroll">
     <div id="home-foryou">
@@ -479,6 +480,7 @@ body.has-sticky .page{padding-bottom:calc(128px + var(--safe-b))}
       <div id="pub-home"></div>
     </div>
     <div id="home-activity" style="display:none"></div>
+    <div id="home-biggest" style="display:none"></div>
   </div>
 </div>
 
@@ -1624,9 +1626,12 @@ function setHomeTab(tab) {
   homeTab = tab;
   $('htab-foryou').classList.toggle('active', tab === 'foryou');
   $('htab-activity').classList.toggle('active', tab === 'activity');
+  $('htab-biggest').classList.toggle('active', tab === 'biggest');
   $('home-foryou').style.display = tab === 'foryou' ? '' : 'none';
   $('home-activity').style.display = tab === 'activity' ? '' : 'none';
+  $('home-biggest').style.display = tab === 'biggest' ? '' : 'none';
   if (tab === 'activity') renderActivity();
+  if (tab === 'biggest') renderBiggest();
 }
 
 function dailyTopic() {
@@ -1761,7 +1766,7 @@ function renderHome() {
   const renderTodo = () => {
     const todo = topics.filter(t => !mine.has(t.id) && !shown.has(t.id))
       .sort((a, b) => (counts[b.id] || 0) - (counts[a.id] || 0))
-      .slice(0, 6);
+      .slice(0, 4);
     if (todoAd === null) todoAd = pubSlot(null, true);
     $('todo-list').innerHTML = todo.length
       ? todo.map((t, i) => topicRow(t, counts, mine) + (i === 2 && todo.length > 3 ? todoAd : '')).join('')
@@ -1771,7 +1776,7 @@ function renderHome() {
   if (!suggCache) $('sugg-box').innerHTML = '<div class="slbl">✨ Suggérés pour toi</div>' + LOADER;
   getSuggestions().then(list => {
     if (stack[stack.length - 1] !== 'home') return;
-    const top = pickVaried(list, 4, shown);
+    const top = pickVaried(list, 3, shown);
     top.forEach(x => shown.add(x.t.id));
     $('sugg-box').innerHTML = top.length
       ? '<div class="slbl">✨ Suggérés pour toi</div>' + top.map(x => topicRow(x.t, counts, mine, x.why)).join('')
@@ -1803,6 +1808,31 @@ async function renderActivity() {
     ? rows.map((t, i) => topCard(t, true) + ((i === 5 || i === 13) && i < rows.length - 1 ? pubSlot(topicById(t.topic_id)?.category, true) : '')).join('')
     : '<div class="empty"><div class="empty-ico">✋</div>Pas encore d\'activité.</div>';
   watchPubs(box);
+}
+
+// Onglet « La mienne est plus grosse que la vôtre » : les 5 tops les plus commentés
+async function renderBiggest() {
+  const box = $('home-biggest');
+  const head = '<div class="slbl">🏆 La mienne est plus grosse que la vôtre</div><div class="hint" style="margin:0 20px 10px">Les tops qui font le plus réagir : plus il y a de commentaires, mieux ils sont classés.</div>';
+  if (!hasComments) { box.innerHTML = head + '<div class="empty"><div class="empty-ico">💬</div>Les commentaires ne sont pas encore activés.</div>'; return; }
+  box.innerHTML = head + LOADER;
+  const { data: cms, error: e1 } = await sb.from('comments').select('top_id').limit(5000);
+  if (e1) { box.innerHTML = head + '<div class="empty"><div class="empty-ico">😕</div>Erreur de chargement</div>'; return; }
+  const n = {};
+  (cms || []).forEach(c => { n[c.top_id] = (n[c.top_id] || 0) + 1; });
+  const ids = Object.keys(n).sort((a, b) => n[b] - n[a]).slice(0, 15);
+  let rows = [];
+  if (ids.length) {
+    const { data, error } = await sb.from('tops')
+      .select(`id,topic_id,user_id,created_at,profiles!tops_user_id_fkey(id,name,handle,country,birth_year,gender,is_demo),likes(user_id),top_items(${ITEM_COLS()})${CMT_SEL()}`)
+      .in('id', ids);
+    if (error) { box.innerHTML = head + '<div class="empty"><div class="empty-ico">😕</div>Erreur de chargement</div>'; return; }
+    if (data.some(t => !topicById(t.topic_id))) { try { await loadData(); } catch (e) {} }
+    rows = data.filter(t => matchesFilters(t.profiles, 'home')).sort((a, b) => n[b.id] - n[a.id]).slice(0, 5);
+  }
+  box.innerHTML = head + (rows.length
+    ? rows.map((t, i) => `<div class="slbl" style="margin-bottom:0">N°${i + 1} · 💬 ${n[t.id]} commentaire${n[t.id] > 1 ? 's' : ''}</div>` + topCard(t, true)).join('')
+    : '<div class="empty"><div class="empty-ico">💬</div>Aucun top commenté pour l\'instant.<br>Lance la discussion !</div>');
 }
 
 // Carte "réponse" (le top 5 d'une personne)
