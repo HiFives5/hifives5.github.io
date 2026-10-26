@@ -110,7 +110,7 @@ async function sendPush(sub, msg) {
 }
 
 // ── Textes (mêmes formulations que la cloche de l'appli)
-const PREF = { comment: 'comment', hi5: 'hi5', badge: 'progress', level: 'progress', soulmate: 'progress', invite: 'invite', daily: 'daily' };
+const PREF = { comment: 'comment', hi5: 'hi5', badge: 'progress', level: 'progress', soulmate: 'progress', invite: 'invite', daily: 'daily', message: 'message' };
 function line(n) {
   const who = n.actor?.handle || "Quelqu'un";
   const t = n.topic?.title ? n.topic.title.replace(/^Top 5 /, 'ton top 5 ') : 'ton top';
@@ -123,7 +123,8 @@ function line(n) {
     case 'invite': return `🤝 ${who} a fait ${n.topic?.title ? n.topic.title.replace(/^Top 5 /, 'son top 5 ') : 'son top'} grâce à ton lien${d.pct != null ? ` : compatibles à ${d.pct} %` : ''}`;
     case 'soulmate': return `💞 Radar : ${who} est ton âme sœur à ${d.pct} %`;
     case 'daily': return `⭐ ${d.text || "Le défi du jour t'attend !"}`;
-    default: return 'Du nouveau sur HiFives';
+    case 'message': { const c = d.count || 1; return d.request ? `✉️ ${who} veut discuter avec toi : « ${d.body || ''} »` : `✉️ ${who}${c > 1 ? ` (${c} messages)` : ''} : « ${d.body || ''} »`; }
+    default: return d.text || 'Du nouveau sur HiFives';
   }
 }
 const parisHour = () => +new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: 'numeric', hourCycle: 'h23' }).format(new Date());
@@ -160,7 +161,7 @@ async function sendPending() {
   const h = parisHour();
   if (h >= QUIET_FROM || h < QUIET_TO) return { quiet: true, sent: 0 };
   const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
-  const list = await db(`notifications?select=id,user_id,kind,data,topic_id,read_at,actor:profiles!notifications_actor_id_fkey(handle),topic:topics(title)`
+  const list = await db(`notifications?select=id,user_id,kind,data,topic_id,actor_id,read_at,actor:profiles!notifications_actor_id_fkey(handle),topic:topics(title)`
     + `&pushed_at=is.null&created_at=gte.${since}&order=created_at.asc&limit=500`);
   if (!list.length) return { sent: 0 };
   const users = [...new Set(list.map((n) => n.user_id))].join(',');
@@ -181,7 +182,8 @@ async function sendPending() {
     if (!items.length || !uSubs.length) continue;
     const last = items[items.length - 1];
     const msg = items.length === 1
-      ? { title: 'HiFives', body: line(last), url: last.kind === 'daily' && last.topic_id ? `${APP_URL}?t=${last.topic_id}` : `${APP_URL}?n=1`, tag: 'hifives-' + last.kind }
+      ? { title: 'HiFives', body: line(last), tag: 'hifives-' + last.kind,
+          url: last.kind === 'daily' && last.topic_id ? `${APP_URL}?t=${last.topic_id}` : last.kind === 'message' && last.actor_id ? `${APP_URL}?c=${last.actor_id}` : `${APP_URL}?n=1` }
       : { title: `HiFives · ${items.length} nouveautés`, body: items.slice(-3).reverse().map(line).join('\n'), url: `${APP_URL}?n=1`, tag: 'hifives' };
     for (const s of uSubs) {
       let status = 0;

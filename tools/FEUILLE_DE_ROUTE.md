@@ -2,15 +2,9 @@
 
 Décisions prises avec Lionel, à reprendre **uniquement quand il le demande**.
 
-## ✉️ Messagerie privée (cadre validé, pas encore lancée)
+## ✉️ Messagerie privée : livrée (migration 020)
 
-- **Accès** : ouverte à tous à partir du niveau 5 · Passionné (1 500 pts), garde-fou vérifié par la base.
-- **Demande de message** : le premier message est une demande ; le destinataire accepte ou ignore.
-  Un refus est **silencieux** (l'expéditeur voit seulement « en attente »).
-- **Bloquer / signaler** dès la première version (signalements dans la page admin, comme les commentaires).
-- **Notifications** : déjà en place (cloche 🔔 + push via l'Edge Function `hifives-push`) — ajouter un type `message` (migration : contrainte `notifications.kind`, réglage, texte dans la fonction et dans la cloche).
-- **Points d'entrée** : bouton « ✉️ Écrire » dans le face-à-face et sur le profil des autres.
-- Mention d'information : les messages ne sont pas chiffrés de bout en bout (lisibles par l'admin de la base).
+Pistes possibles plus tard : messages en temps réel (Supabase Realtime au lieu d'une vérification toutes les 4 s), photos, conversations de groupe.
 
 ## 🗳️ Pouvoirs d'influence (marqués « bientôt » dans la double échelle)
 

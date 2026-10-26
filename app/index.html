@@ -328,6 +328,16 @@ body.has-sticky .page{padding-bottom:calc(128px + var(--safe-b))}
 /* ── RETOURS UTILISATEURS ── */
 .icon-btn{position:relative}
 .icon-btn .nav-badge{top:-5px;right:-5px;box-shadow:0 0 0 2px var(--bg)}
+.msg-list{padding:10px 14px 150px;display:flex;flex-direction:column;gap:6px}
+.bub{max-width:80%;padding:9px 12px;border-radius:16px;font-size:14px;line-height:1.4;white-space:pre-wrap;word-break:break-word}
+.bub.me{align-self:flex-end;background:var(--orange);color:#fff;border-bottom-right-radius:5px}
+.bub.them{align-self:flex-start;background:var(--card2);border:1px solid var(--border);border-bottom-left-radius:5px;cursor:pointer}
+.bub-time{font-size:10px;color:var(--t3);margin:2px 4px 6px}
+.bub-time.me{align-self:flex-end}
+.msg-bar{position:fixed;bottom:calc(64px + var(--safe-b));left:50%;transform:translateX(-50%);width:100%;max-width:430px;padding:10px 12px;background:var(--bg2);border-top:1px solid var(--border);z-index:60;display:flex;gap:8px;align-items:flex-end}
+.msg-bar .input{flex:1;resize:none;font-size:14px;padding:10px 12px;height:auto;min-height:44px;max-height:120px}
+.msg-bar .btn{width:auto;height:44px;padding:0 16px;font-size:14px}
+.cv-row .dot{width:9px;height:9px;border-radius:50%;background:var(--orange);flex-shrink:0}
 .nt-ico{width:34px;height:34px;border-radius:11px;background:var(--card2);display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0}
 .setting + .setting.nt{margin-top:8px}
 .icon-btn{width:36px;height:36px;border-radius:12px;background:var(--card2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer}
@@ -465,6 +475,7 @@ body.has-sticky .page{padding-bottom:calc(128px + var(--safe-b))}
   <div class="screen-hdr">
     <div class="screen-title">Hi<span style="color:var(--orange)">Fives</span> ✋</div>
     <div style="display:flex;gap:8px">
+      <div class="icon-btn" id="mailbox" onclick="openInbox()" title="Messages" style="display:none">✉️<span class="nav-badge" id="msg-badge"></span></div>
       <div class="icon-btn" id="bell" onclick="openNotifs()" title="Notifications" style="display:none">🔔<span class="nav-badge" id="notif-badge"></span></div>
       <div class="icon-btn" onclick="openFeedback()" title="Donner mon avis">💬</div>
       <div class="avatar" id="home-av" onclick="navTo('profile')">?</div>
@@ -725,11 +736,40 @@ body.has-sticky .page{padding-bottom:calc(128px + var(--safe-b))}
         <div class="p-si"><div class="p-sn" id="up-pts">0</div><div class="p-sl">Points</div></div>
       </div>
     </div>
+    <div id="up-write"></div>
     <div id="up-match"></div>
     <div id="up-badges"></div>
     <div id="up-pub"></div>
     <div class="slbl">Ses tops</div>
     <div id="up-tops" style="padding-bottom:24px"></div>
+  </div>
+</div>
+
+<!-- ══════ MESSAGES ══════ -->
+<div id="page-inbox" class="page no-nav">
+  <div class="sub-hdr">
+    <div class="back-btn" onclick="goBack()">←</div>
+    <div><div class="hdr-kicker" style="color:var(--t3)">Messagerie</div><div class="hdr-title">✉️ Messages</div></div>
+  </div>
+  <div class="feed-tabs" style="padding-top:10px">
+    <button class="ftab active" id="ibtab-msgs" onclick="inboxTab='msgs';renderInbox()">Messages</button>
+    <button class="ftab" id="ibtab-reqs" onclick="inboxTab='reqs';renderInbox()">Demandes</button>
+  </div>
+  <div class="scroll" style="padding:6px 0 32px"><div id="ib-list"></div></div>
+</div>
+<div id="page-conv" class="page no-nav">
+  <div class="sub-hdr">
+    <div class="back-btn" onclick="goBack()">←</div>
+    <div style="flex:1;min-width:0;cursor:pointer" onclick="openUser(convOther)">
+      <div class="hdr-kicker" style="color:var(--t3)">Conversation privée</div><div class="hdr-title" id="cv-title">…</div>
+    </div>
+    <div class="icon-btn" onclick="convMenu()" title="Options">⋯</div>
+  </div>
+  <div id="cv-top"></div>
+  <div class="msg-list" id="cv-list"></div>
+  <div class="msg-bar" id="cv-bar" style="display:none">
+    <textarea id="cv-input" class="input" rows="1" maxlength="1000" placeholder="Ton message…" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,120)+'px'"></textarea>
+    <button class="btn btn-primary" id="cv-send" onclick="sendMsg()">Envoyer</button>
   </div>
 </div>
 
@@ -934,7 +974,7 @@ const UNLOCKS = [
   { s: '💬 Commenter les tops', a: '🔎 « Qui a aussi mis… »' },
   { s: '✏️ Créer des sujets', a: '🤝 Compatibilité et face-à-face sur tous les profils' },
   { s: '✨ Un titre sous ton pseudo', a: '🧲 Tes 3 meilleures affinités' },
-  { s: '✉️ Messagerie (bientôt)', a: '💞 Âmes sœurs par thème · ⚡ vos désaccords' },
+  { s: '✉️ Messagerie privée', a: '💞 Âmes sœurs par thème · ⚡ vos désaccords' },
   { s: '✨ Cadre bronze', a: '🧲 Tes 10 meilleures affinités · 🙃 Tes opposés' },
   { s: '🗳️ Vote du thème sponsorisé (bientôt)', a: '🎁 Les recos de tes affinités' },
   { s: '✨ Cadre argent · 🚫 Plus de pub · 🗳️ proposer un défi (bientôt)', a: '🧭 Ta tribu' },
@@ -1076,6 +1116,7 @@ async function loadData() {
   // Notifications (migration 018)
   if (hasNotifs === null) { const nt = await sb.from('notifications').select('id').limit(1); hasNotifs = !nt.error; }
   if (hasPush === null) { const ps = await sb.from('push_subscriptions').select('id').limit(1); hasPush = !ps.error; }
+  if (hasMsgs === null) { const cv = await sb.from('conversations').select('id').limit(1); hasMsgs = !cv.error; }
   // Publicités actives (migration 016)
   const pb = await sb.from('ads').select('*').eq('active', true).order('created_at');
   hasAds = !pb.error;
@@ -1095,7 +1136,8 @@ let hasComments = null;   // migration 013 exécutée ? (commentaires + badges)
 let badgeDefs = [];       // catalogue des badges
 let hasAds = false, adsList = [], pubShown = new Set();
 let hasNotifs = null;     // centre de notifications (migration 018)
-let hasPush = null;       // notifications push (migration 019 + Edge Function hifives-push)   // régie publicitaire maison (migration 016)
+let hasPush = null;       // notifications push (migration 019 + Edge Function hifives-push)
+let hasMsgs = null;       // messagerie (migration 020)   // régie publicitaire maison (migration 016)
 const CMT_SEL = () => hasComments ? ',comments(count)' : '';
 let sponsoredPast = [];   // défis passés (60 jours), du plus récent au plus ancien
 let sponsoredNext = null; // prochain défi (teaser)
@@ -1500,6 +1542,8 @@ const RENDERERS = {
   user: () => renderUser(currentUserId),
   answer: () => renderAnswer(currentAnswerId),
   admin: () => renderAdmin(),
+  inbox: () => renderInbox(),
+  conv: () => renderConv(),
   notifs: () => renderNotifs(),
   adminpub: () => renderPubAdmin(),
   help: () => renderHelp(),
@@ -1634,6 +1678,7 @@ async function onAuthSuccess(user) {
   navTo('home');
   openInvite();
   if (openNotifsOnStart) { openNotifsOnStart = false; openNotifs(); }
+  if (openConvOnStart) { const c = openConvOnStart; openConvOnStart = null; openConversation(c); }
 }
 
 function showSetupError(e) {
@@ -2433,6 +2478,169 @@ async function renderTopic(id) {
 }
 
 // ─────────────────────────────────────────
+// MESSAGERIE PRIVÉE (sur demande ; règles vérifiées par la base)
+// ─────────────────────────────────────────
+const MSG_LEVEL = 5;
+let inboxTab = 'msgs', convOther = null, convRow = null, convTimer = null, convCount = -1;
+const otherOf = c => c.user_a === me.id ? c.user_b : c.user_a;
+const myReadOf = c => c.user_a === me.id ? c.a_read_at : c.b_read_at;
+const convUnread = c => c.last_sender && c.last_sender !== me.id && (!myReadOf(c) || c.last_at > myReadOf(c));
+async function fetchConvs() {
+  const [{ data, error }, { data: bl }, { data: hid }] = await Promise.all([
+    sb.from('conversations').select('*, a:profiles!conversations_user_a_fkey(id,handle,avatar_url), b:profiles!conversations_user_b_fkey(id,handle,avatar_url)').order('last_at', { ascending: false }),
+    sb.from('blocks').select('blocked'),
+    sb.from('conv_hidden').select('conversation_id'),
+  ]);
+  if (error) throw error;
+  const blocked = new Set((bl || []).map(x => x.blocked)), hidden = new Set((hid || []).map(x => x.conversation_id));
+  return data.filter(c => !blocked.has(otherOf(c)) && !hidden.has(c.id)).map(c => ({ ...c, other: c.user_a === me.id ? c.b : c.a }));
+}
+// Demandes reçues en attente / conversations (dont mes demandes envoyées : un refus reste invisible)
+const isRequestForMe = c => c.status === 'pending' && c.requester !== me.id;
+const isVisibleConv = c => c.status === 'accepted' || c.requester === me.id;
+async function updateMsgBadge() {
+  const box = $('mailbox');
+  if (!hasMsgs || !me) { if (box) box.style.display = 'none'; return; }
+  box.style.display = '';
+  let n = 0;
+  try { n = (await fetchConvs()).filter(c => isRequestForMe(c) || (isVisibleConv(c) && convUnread(c))).length; } catch (e) {}
+  const b = $('msg-badge');
+  b.textContent = n > 9 ? '9+' : n; b.style.display = n ? 'flex' : 'none';
+}
+function openInbox() { pushPage('inbox'); renderInbox(); }
+async function renderInbox() {
+  const box = $('ib-list');
+  if (!hasMsgs) { box.innerHTML = '<div class="empty"><div class="empty-ico">✉️</div>La messagerie arrive bientôt.</div>'; return; }
+  box.innerHTML = LOADER;
+  let convs;
+  try { convs = await fetchConvs(); } catch (e) { box.innerHTML = `<div class="empty">Erreur : ${esc(e.message)}</div>`; return; }
+  const reqs = convs.filter(isRequestForMe), msgs = convs.filter(isVisibleConv);
+  $('ibtab-msgs').classList.toggle('active', inboxTab === 'msgs');
+  $('ibtab-reqs').classList.toggle('active', inboxTab === 'reqs');
+  $('ibtab-reqs').textContent = 'Demandes' + (reqs.length ? ` (${reqs.length})` : '');
+  const list = inboxTab === 'reqs' ? reqs : msgs;
+  const row = c => {
+    const o = c.other || {}, pending = c.status !== 'accepted';
+    const sub = pending && c.requester === me.id ? '⏳ Demande envoyée, en attente de réponse' : (c.last_sender === me.id ? 'Toi : ' : '') + (c.last_body || '');
+    return `<div class="hi5-row cv-row ${convUnread(c) || isRequestForMe(c) ? 'new' : ''}" style="cursor:pointer" onclick="openConversation('${o.id}')">
+      <div class="cav" style="background:${colorFor(o.handle)}">${initialOf({ handle: o.handle })}</div>
+      <div class="hi5-txt" style="min-width:0"><span class="who">${esc(o.handle || '?')}</span>
+        <div class="topic-meta" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(sub)}</div></div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0"><span class="topic-meta">${timeAgo(c.last_at)}</span>${convUnread(c) ? '<span class="dot"></span>' : ''}</div></div>`;
+  };
+  box.innerHTML = list.length ? list.map(row).join('')
+    : inboxTab === 'reqs' ? '<div class="empty"><div class="empty-ico">📭</div>Aucune demande en attente.</div>'
+    : `<div class="empty"><div class="empty-ico">✉️</div>Pas encore de conversation.<br>Va sur le profil d'une de tes affinités et touche « ✉️ Écrire ».${myLevel() < MSG_LEVEL ? `<br><br>🔒 Écrire se débloque au niveau ${MSG_LEVEL} · ${LEVEL_NAMES[MSG_LEVEL - 1]}.` : ''}</div>`;
+}
+async function openConversation(otherId) {
+  if (!otherId || otherId === me.id) return;
+  convOther = otherId; convRow = null; convCount = -1;
+  pushPage('conv');
+  renderConv();
+}
+async function renderConv() {
+  const otherId = convOther;
+  clearInterval(convTimer);
+  $('cv-top').innerHTML = ''; $('cv-list').innerHTML = LOADER; $('cv-bar').style.display = 'none';
+  const [{ data: p }, { data: bl }] = await Promise.all([
+    sb.from('profiles').select('id,handle,is_demo').eq('id', otherId).maybeSingle(),
+    sb.from('blocks').select('blocked').eq('blocked', otherId),
+  ]);
+  if (convOther !== otherId) return;
+  if (!p) { $('cv-list').innerHTML = '<div class="empty">Profil introuvable</div>'; return; }
+  $('cv-title').textContent = p.handle;
+  const a = me.id < otherId ? me.id : otherId, b = me.id < otherId ? otherId : me.id;
+  const { data: c } = await sb.from('conversations').select('*').eq('user_a', a).eq('user_b', b).maybeSingle();
+  if (convOther !== otherId) return;
+  convRow = c;
+  const iBlocked = (bl || []).length > 0;
+  const top = (html) => `<div class="insight" style="margin:10px 16px 4px"><div class="ins-text">${html}</div></div>`;
+  const bar = on => { $('cv-bar').style.display = on ? 'flex' : 'none'; };
+  if (iBlocked) {
+    $('cv-top').innerHTML = top(`🚫 Tu as bloqué ${esc(p.handle)}. <a style="color:var(--orange);cursor:pointer" onclick="convBlock(false)">Débloquer</a>`);
+  } else if (!c) {
+    if (myLevel() < MSG_LEVEL) $('cv-top').innerHTML = lockBox(MSG_LEVEL, `écris en privé à ${esc(p.handle)} et à tes affinités.`).replace('class="lock-box"', 'class="lock-box" style="margin:12px 16px"');
+    else { $('cv-top').innerHTML = top(`✉️ Ton premier message est une <strong>demande</strong> : ${esc(p.handle)} pourra l'accepter ou l'ignorer. Un seul message en attendant sa réponse.<br><span style="font-size:11px;color:var(--t3)">Messages lisibles par vous deux uniquement (non chiffrés de bout en bout). Un message signalé est transmis à l'équipe HiFives.</span>`); bar(true); }
+  } else if (c.status !== 'accepted' && c.requester === me.id) {
+    $('cv-top').innerHTML = top(`⏳ Demande envoyée : tu pourras continuer la conversation quand ${esc(p.handle)} aura répondu.`);
+  } else if (c.status !== 'accepted') {
+    $('cv-top').innerHTML = top(`✉️ <strong>${esc(p.handle)}</strong> veut discuter avec toi.<div class="row" style="gap:8px;margin-top:10px">
+        <button class="btn btn-primary" style="height:40px;font-size:13px;flex:1" onclick="convRespond(true)">Accepter</button>
+        <button class="btn btn-ghost" style="height:40px;font-size:13px;flex:1" onclick="convRespond(false)">Ignorer</button>
+        <button class="btn btn-ghost" style="height:40px;font-size:13px;flex:1" onclick="convBlock(true)">Bloquer</button></div>
+      <div style="font-size:11px;color:var(--t3);margin-top:8px">${esc(p.handle)} ne saura pas si tu ignores sa demande.</div>`);
+  } else bar(true);
+  await loadMsgs();
+  if (c) convTimer = setInterval(() => { if (stack[stack.length - 1] === 'conv' && convOther === otherId) loadMsgs(); else clearInterval(convTimer); }, 4000);
+}
+async function loadMsgs() {
+  const c = convRow;
+  if (!c) { $('cv-list').innerHTML = ''; return; }
+  const { data } = await sb.from('messages').select('id,sender_id,body,created_at').eq('conversation_id', c.id).order('created_at').limit(300);
+  if (!convRow || convRow.id !== c.id) return;
+  const list = data || [];
+  // L'autre a répondu à ma demande : la conversation est acceptée, on réaffiche (zone de saisie)
+  if (c.status !== 'accepted' && c.requester === me.id && list.some(m => m.sender_id !== me.id)) { convCount = -1; return renderConv(); }
+  if (list.length === convCount) return;
+  const atBottom = convCount < 0 || window.innerHeight + window.scrollY >= document.body.scrollHeight - 80;
+  convCount = list.length;
+  $('cv-list').innerHTML = list.map(m => {
+    const mine = m.sender_id === me.id;
+    return `<div class="bub ${mine ? 'me' : 'them'}" ${mine ? '' : `onclick="reportMsg('${m.id}')"`}>${esc(m.body)}</div><div class="bub-time ${mine ? 'me' : ''}">${timeAgo(m.created_at)}</div>`;
+  }).join('');
+  if (atBottom) window.scrollTo(0, document.body.scrollHeight);
+  // Lu : la conversation et ses notifications
+  sb.rpc('mark_conversation_read', { conv: c.id }).then(() => {}, () => {});
+  sb.from('notifications').update({ read_at: new Date().toISOString() }).eq('kind', 'message').is('read_at', null).filter('data->>conv', 'eq', c.id)
+    .then(() => updateNotifBadge(), () => {});
+}
+async function sendMsg() {
+  const inp = $('cv-input'), body = inp.value.trim();
+  if (!body || !convOther) return;
+  const btn = $('cv-send'); btn.disabled = true;
+  const { error } = await sb.rpc('send_message', { other: convOther, body });
+  btn.disabled = false;
+  if (error) return toast(error.message);
+  inp.value = ''; inp.style.height = '';
+  renderConv();
+}
+async function convRespond(accept) {
+  if (!convRow) return;
+  const { error } = await sb.rpc('respond_request', { conv: convRow.id, accept });
+  if (error) return toast('Erreur : ' + error.message);
+  if (accept) { toast('✉️ Demande acceptée'); renderConv(); }
+  else { toast('Demande ignorée'); goBack(); }
+}
+async function convBlock(block) {
+  if (block && !confirm('Bloquer cette personne ? Elle ne pourra plus t\'écrire, et tu ne verras plus cette conversation.')) return;
+  const { error } = await sb.rpc('block_user', { other: convOther, block });
+  if (error) return toast('Erreur : ' + error.message);
+  toast(block ? '🚫 Personne bloquée' : 'Personne débloquée');
+  if (block) goBack(); else renderConv();
+}
+function convMenu() {
+  const blocked = $('cv-top').textContent.includes('Tu as bloqué');
+  if (confirm(blocked ? 'Débloquer cette personne ?' : 'Bloquer cette personne ?\n(Pour signaler un message, touche-le.)')) convBlock(!blocked);
+}
+async function reportMsg(id) {
+  if (!confirm('Signaler ce message à l\'équipe HiFives ? Son contenu lui sera transmis.')) return;
+  const { data: m } = await sb.from('messages').select('body').eq('id', id).maybeSingle();
+  const { error } = await sb.from('feedback').insert({
+    user_id: me.id, kind: 'signalement', page: 'message:' + id,
+    message: `Message privé de ${$('cv-title').textContent} : « ${m?.body || ''} »`.slice(0, 2000),
+  });
+  toast(error ? 'Erreur : ' + error.message : '🚩 Merci, le message a été signalé');
+}
+async function adminDeleteMessage(id, fbId) {
+  if (!confirm('Supprimer définitivement ce message ?')) return;
+  const { error } = await sb.from('messages').delete().eq('id', id);
+  if (error) return toast('Erreur : ' + error.message);
+  await sb.from('feedback').update({ status: 'traite' }).eq('id', fbId);
+  toast('Message supprimé');
+  renderAdmin();
+}
+
+// ─────────────────────────────────────────
 // NOTIFICATIONS 🔔 (créées par la base ; l'appli les affiche et les marque comme lues)
 // ─────────────────────────────────────────
 const NOTIF_TYPES = [
@@ -2440,10 +2648,12 @@ const NOTIF_TYPES = [
   { k: 'hi5', label: 'High fives reçus' },
   { k: 'progress', label: 'Badges, niveaux et radar d\'âmes sœurs' },
   { k: 'invite', label: 'Amis qui répondent à mes partages' },
+  { k: 'message', label: 'Messages privés' },
   { k: 'daily', label: 'Rappel du défi du jour', hint: 'à 18 h, si tu ne l\'as pas encore relevé' },
 ];
 const notifOn = k => (profile?.notif_prefs || {})[k] !== false;
 async function updateNotifBadge() {
+  updateMsgBadge();
   const bell = $('bell');
   if (!hasNotifs || !me) { if (bell) bell.style.display = 'none'; return; }
   bell.style.display = '';
@@ -2464,6 +2674,8 @@ function notifView(n) {
     case 'level': { const l = d.level || 1; return { ico: '🎉', go: `openStat('points')`, html: `Niveau ${l} · <strong>${LEVEL_NAMES[l - 1] || ''}</strong> ! Va voir ce que tu débloques` }; }
     case 'invite': return { ico: '🤝', go: `openUser('${n.actor_id}')`, html: `${who} a fait ${t ? esc(t.title.replace(/^Top 5 /, 'son top 5 ')) : 'son top'} grâce à ton lien${d.pct != null ? ` : vous êtes compatibles à <strong>${d.pct} %</strong>` : ''}` };
     case 'soulmate': return { ico: '💞', go: `openUser('${n.actor_id}')`, html: `Radar : ${who} est ton âme sœur à <strong>${d.pct} %</strong>` };
+    case 'message': { const c = d.count || 1; return { ico: '✉️', go: `openConversation('${n.actor_id}')`,
+      html: d.request ? `${who} veut discuter avec toi : « ${esc(d.body || '')} »` : `${who}${c > 1 ? ` (${c} messages)` : ''} : « ${esc(d.body || '')} »` }; }
     case 'daily': return { ico: '⭐', go: n.topic_id ? `openFillById('${n.topic_id}')` : `navTo('home')`, html: esc(d.text || 'Le défi du jour t\'attend !') };
     default: return { ico: '🔔', go: '', html: '' };
   }
@@ -3432,7 +3644,7 @@ function pageContext() {
   if (cur === 'fill') return 'Saisie : ' + (fillTopic?.title || '');
   if (cur === 'success') return 'Résultat : ' + (fillTopic?.title || '');
   return { home: 'Accueil', search: 'Sujets', profile: 'Profil', affinities: 'Affinités', create: 'Création de sujet',
-           user: 'Profil d\'un membre', answer: 'Réponse d\'un membre', admin: 'Admin · retours', notifs: 'Notifications', adminpub: 'Admin · publicités', help: 'Aide' }[cur] || cur;
+           user: 'Profil d\'un membre', answer: 'Réponse d\'un membre', admin: 'Admin · retours', notifs: 'Notifications', inbox: 'Messages', conv: 'Conversation', adminpub: 'Admin · publicités', help: 'Aide' }[cur] || cur;
 }
 
 function openFeedback() {
@@ -3543,6 +3755,7 @@ async function renderAdmin() {
         ${f.page ? `<span>· 📍 ${esc(f.page)}</span>` : ''}
       </div>
       <div class="fb-msg">${esc(f.message)}</div>
+      ${f.kind === 'signalement' && /^message:[0-9a-f-]{36}$/.test(f.page || '') ? `<button class="btn btn-ghost" style="height:38px;font-size:13px;margin-top:8px" onclick="adminDeleteMessage('${f.page.slice(8)}','${f.id}')">🗑 Supprimer le message signalé</button>` : ''}
       ${f.kind === 'signalement' && /^comment:[0-9a-f-]{36}$/.test(f.page || '') ? `<button class="btn btn-ghost" style="height:38px;font-size:13px;margin-top:8px" onclick="adminDeleteComment('${f.page.slice(8)}','${f.id}')">🗑 Supprimer le commentaire signalé</button>` : ''}
       ${f.user_agent ? `<div class="hint" style="margin-top:6px;font-size:10px">${esc(f.user_agent)}</div>` : ''}
       <div class="fb-status">${Object.entries(FB_STATUS).map(([s, l]) =>
@@ -4346,6 +4559,8 @@ async function renderUser(userId) {
   $('up-handle').textContent = p.handle + (p.is_demo ? ' · démo' : '');
   $('up-level').textContent = `Niv. ${lvl} · ${LEVEL_NAMES[lvl - 1]}`;
   renderMatch(userId, p);
+  $('up-write').innerHTML = hasMsgs && !p.is_demo && userId !== me.id
+    ? `<div style="padding:12px 16px 0"><button class="btn btn-ghost" style="height:44px;font-size:14px" onclick="openConversation('${userId}')">✉️ Écrire à ${esc(p.handle)}</button></div>` : '';
   renderBadges('up-badges', userId);
   const likes = await fetchLikeCounts(userId);
   if (currentUserId !== userId) return;
@@ -4363,6 +4578,7 @@ async function renderUser(userId) {
 // ─────────────────────────────────────────
 let invite = null;   // { t, de, handle }
 let openNotifsOnStart = false;   // ouverture depuis une notification push
+let openConvOnStart = null;      // conversation à ouvrir (notification de message)
 (function readInvite() {
   try {
     const q = new URLSearchParams(location.search);
@@ -4370,7 +4586,8 @@ let openNotifsOnStart = false;   // ouverture depuis une notification push
     const uuid = /^[0-9a-f-]{36}$/;
     if (t && uuid.test(t)) localStorage.setItem('hf_invite', JSON.stringify({ t, de: de && uuid.test(de) ? de : null }));
     if (q.has('n')) openNotifsOnStart = true;
-    if (q.has('t') || q.has('n')) history.replaceState(null, '', location.pathname);
+    if (/^[0-9a-f-]{36}$/.test(q.get('c') || '')) openConvOnStart = q.get('c');
+    if (q.has('t') || q.has('n') || q.has('c')) history.replaceState(null, '', location.pathname);
     invite = JSON.parse(localStorage.getItem('hf_invite') || 'null');
   } catch (e) { invite = null; }
 })();
