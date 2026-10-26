@@ -46,6 +46,7 @@ Les évolutions se font par des fichiers `supabase/migrations/NNN_*.sql`, à ex�
 - `018_notifications.sql` : centre de notifications 🔔 (commentaires, high fives regroupés, badges, niveaux, invitations, radar), réglages par type.
 - `019_notifications_push.sql` : notifications push (abonnements des téléphones, clés gardées côté serveur, appel chaque minute de l'Edge Function `supabase/functions/hifives-push`, à créer avant).
 - `020_messagerie.sql` : messagerie privée sur demande (niveau 5, refus silencieux, blocage, signalement, notifications « message ») ; mettre aussi à jour l'Edge Function `hifives-push`.
+- `021_visite_guidee.sql` : mémorise par compte que la visite guidée des nouveautés a été vue (colonne `profiles.intro_seen`).
 
 ### Défis sponsorisés
 Table Editor → `sponsored_challenges` (modifiable par les admins uniquement) :

@@ -379,6 +379,24 @@ body.has-sticky .page{padding-bottom:calc(128px + var(--safe-b))}
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;display:none;align-items:flex-end;justify-content:center}
 .modal-bg.open{display:flex}
 .modal-sheet{background:var(--card2);border-radius:24px 24px 0 0;padding:20px 20px calc(20px + var(--safe-b));width:100%;max-width:430px;border-top:1px solid var(--border);animation:shUp .3s ease both;max-height:85vh;overflow-y:auto}
+#tour{position:fixed;inset:0;z-index:1000;display:none}
+#tour.on{display:block}
+#tour .veil{position:fixed;inset:0;background:rgba(8,8,12,.82);transition:opacity .25s}
+#tour .hole{position:fixed;border-radius:16px;box-shadow:0 0 0 9999px rgba(8,8,12,.82);transition:all .35s ease;pointer-events:none}
+#tour .hole::after{content:'';position:absolute;inset:-6px;border-radius:20px;border:2px solid var(--orange);animation:tourPulse 1.6s ease-out infinite}
+@keyframes tourPulse{0%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.18)}}
+#tour .tcard{position:fixed;left:50%;transform:translateX(-50%);width:calc(100% - 32px);max-width:400px;background:var(--card2);border:1px solid var(--b2);border-radius:20px;padding:18px 18px 14px;box-shadow:0 16px 40px rgba(0,0,0,.6);transition:top .35s ease,bottom .35s ease}
+#tour .tk{font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--orange)}
+#tour .tt{font-size:19px;font-weight:900;letter-spacing:-.4px;margin:6px 0 6px;line-height:1.2}
+#tour .tx{font-size:14px;color:var(--t2);line-height:1.5}
+#tour .tx b{color:var(--text)}
+#tour .tdots{display:flex;gap:5px;margin:14px 0 12px}
+#tour .tdots i{width:6px;height:6px;border-radius:3px;background:var(--b2);transition:all .25s}
+#tour .tdots i.on{width:18px;background:var(--orange)}
+#tour .tbtns{display:flex;gap:8px;align-items:center}
+#tour .tskip{background:none;border:none;color:var(--t3);font-size:14px;font-weight:700;padding:10px 6px;cursor:pointer}
+#tour .tbtns .btn{flex:1;height:46px;font-size:15px}
+#tour .tbig{font-size:46px;line-height:1;margin-bottom:6px}
 @keyframes shUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
 .mhandle{width:36px;height:4px;background:var(--b2);border-radius:2px;margin:0 auto 18px}
 .mgroup{font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px}
@@ -926,6 +944,10 @@ body.has-sticky .page{padding-bottom:calc(128px + var(--safe-b))}
 
 <div id="toast"></div>
 
+<div id="tour"><div class="veil"></div><div class="hole"></div>
+  <div class="tcard"><div class="tk" id="tour-k"></div><div class="tt" id="tour-t"></div><div class="tx" id="tour-x"></div>
+    <div class="tdots" id="tour-dots"></div>
+    <div class="tbtns"><button class="tskip" id="tour-skip" onclick="tourEnd()">Passer</button><button class="btn btn-primary" id="tour-next" onclick="tourNext()">Suivant →</button></div></div></div>
 <div id="pub-sticky"></div>
 <div id="nav">
   <button class="nav-btn active" id="nav-home" onclick="navTo('home')"><div class="nav-ico">🏠</div><div class="nav-lbl">Accueil</div><span class="nav-badge" id="notif-nav-badge"></span></button>
@@ -1675,7 +1697,9 @@ async function onAuthSuccess(user) {
   }
   if (!profile) return showSetupError({ message: 'Profil introuvable pour ce compte.' });
   history.replaceState({ hf: 1 }, '');
+  const deepLink = !!invite || openNotifsOnStart || !!openConvOnStart;
   navTo('home');
+  if (!deepLink) setTimeout(maybeStartTour, 1200);
   openInvite();
   if (openNotifsOnStart) { openNotifsOnStart = false; openNotifs(); }
   if (openConvOnStart) { const c = openConvOnStart; openConvOnStart = null; openConversation(c); }
@@ -2478,6 +2502,124 @@ async function renderTopic(id) {
 }
 
 // ─────────────────────────────────────────
+// VISITE GUIDÉE des nouveautés (une fois par compte ; l'écran est estompé, la fonction présentée reste allumée)
+// ─────────────────────────────────────────
+const INTRO_VERSION = 1;
+const TOUR = [
+  { k: 'Quoi de neuf', big: '✋', t: 'HiFives a bien changé !', x: 'Notifications, messages privés, commentaires, badges, niveaux, affinités… Petit tour en 1 minute de tout ce qui t\'attend.' },
+  { k: 'Notifications', go: () => { setHomeTab('foryou'); navTo('home'); }, el: '#bell', t: '🔔 Ne rate plus rien',
+    x: 'Un commentaire, un high five, un badge, un ami qui répond à ton partage : tout arrive dans la <b>cloche</b>.<br>Et en <b>activant les notifications</b>, tu es prévenu même appli fermée (jamais la nuit).', push: true },
+  { k: 'Messages', go: () => { setHomeTab('foryou'); navTo('home'); }, el: '#mailbox', t: '✉️ Écris à tes affinités',
+    x: 'Discute en privé avec les personnes qui ont tes goûts. Le premier message est une <b>demande</b> : l\'autre accepte ou ignore, en toute discrétion. <b>Dès le niveau 5.</b>' },
+  { k: 'Commentaires', go: () => { navTo('home'); setHomeTab('activity'); }, el: '#home-activity [data-ctop]', t: '💬 Lance le débat',
+    x: 'Kill Bill devant Pulp Fiction ?! Commente les tops des autres et réponds sous les tiens. <b>Dès le niveau 2.</b>' },
+  { k: 'Top commentés', go: () => { navTo('home'); setHomeTab('activity'); }, el: '#htab-biggest', t: '🏆 Les tops qui font parler',
+    x: 'Un nouvel onglet avec les tops les plus commentés de la communauté. À toi de grimper dans le classement !' },
+  { k: 'Badges', go: () => navTo('profile'), el: '#p-badges', t: '🏅 15 badges à collectionner',
+    x: 'Débat lancé, Star, Polémique, Chasseur de défis… Chaque badge rapporte <b>jusqu\'à 300 points</b>. Ta progression est sur ton profil.' },
+  { k: 'Niveaux', go: () => navTo('profile'), el: '.xp-card', t: '📈 10 niveaux à débloquer',
+    x: 'De Débutant à Légende : chaque niveau débloque un avantage (commenter, créer des sujets, écrire en privé, cadres de photo, plus de pub…) et une nouvelle façon de découvrir tes affinités.' },
+  { k: 'Affinités', go: () => { navTo('affinities'); }, el: '#nav-affinities', t: '🧲 Tes affinités se dévoilent',
+    x: 'Ton % de compatibilité avec chacun, tes âmes sœurs par thème, tes opposés, ta tribu, ton ADN de goûts… <b>tout se débloque au fil des niveaux.</b>' },
+  { k: 'Partage', go: () => { setHomeTab('foryou'); navTo('home'); }, el: '.nav-plus', t: '📤 Défie tes amis',
+    x: 'Après chaque top, partage-le sur WhatsApp : tes amis le remplissent et découvrent votre <b>compatibilité</b>. Toi, tu es prévenu dès qu\'ils répondent.' },
+  { k: 'C\'est parti', big: '🚀', go: () => { setHomeTab('foryou'); navTo('home'); }, t: 'À toi de jouer !',
+    x: 'Remplis le défi du jour, monte de niveau et découvre qui te ressemble. Tu pourras revoir cette présentation dans <b>Profil → ❓ Comment ça marche</b>.', push: true, last: true },
+];
+let tourIdx = 0, tourOn = false;
+function tourSeen() {
+  const db = profile && 'intro_seen' in profile ? profile.intro_seen : null;
+  return Math.max(db ?? 0, readPref('introSeen', 0)) >= INTRO_VERSION;
+}
+function maybeStartTour() {
+  if (tourOn || !me || !profile || tourSeen() || stack.length > 1 || stack[0] !== 'home') return;
+  startTour();
+}
+function startTour() {
+  tourIdx = 0; tourOn = true;
+  $('tour').classList.add('on');
+  $('tour-dots').innerHTML = TOUR.map(() => '<i></i>').join('');
+  tourShow();
+}
+function tourNext() {
+  if (tourIdx >= TOUR.length - 1) return tourEnd();
+  tourIdx++;
+  tourShow();
+}
+async function tourShow() {
+  const st = TOUR[tourIdx], i = tourIdx;
+  if (st.go) st.go();
+  $('tour-k').textContent = `${st.k} · ${i + 1}/${TOUR.length}`;
+  $('tour-t').innerHTML = (st.big ? `<div class="tbig">${st.big}</div>` : '') + st.t;
+  let x = st.x;
+  // Notifications : bouton d'activation directement dans la visite
+  if (st.push && hasPush) {
+    const ps = await pushState();
+    if (ps === 'off') x += `<div style="margin-top:12px"><button class="btn btn-ghost" style="height:42px;font-size:14px;border-color:var(--orange);color:var(--orange)" onclick="tourPush()">📲 Activer les notifications</button></div>`;
+    else if (ps === 'install' && !st.last) x += '<div style="margin-top:10px;font-size:12px;color:var(--t3)">Sur iPhone : ajoute d\'abord HiFives à l\'écran d\'accueil (Safari → Partager ⬆️ → « Sur l\'écran d\'accueil »).</div>';
+    else if (ps === 'on') x += '<div style="margin-top:10px;font-size:13px;color:var(--green, #3ecf8e)">✅ Notifications déjà activées sur ce téléphone.</div>';
+  }
+  if (i !== tourIdx) return;
+  $('tour-x').innerHTML = x;
+  [...$('tour-dots').children].forEach((d, k) => d.classList.toggle('on', k === i));
+  $('tour-next').textContent = st.last ? 'J\'ai compris ✋' : 'Suivant →';
+  $('tour-skip').style.visibility = st.last ? 'hidden' : '';
+  // Élément à allumer : on attend qu'il soit à l'écran (2,5 s max), sinon carte seule
+  // Élément affiché (non vide) et immobile (le contenu au-dessus a fini de se charger)
+  let el = null, last = null;
+  for (let t = 0; t < 30 && st.el; t++) {
+    const e = [...document.querySelectorAll(st.el)].find(e => (e.offsetParent !== null || getComputedStyle(e).position === 'fixed') && e.getBoundingClientRect().height > 0);
+    const pos = e ? Math.round(e.getBoundingClientRect().top + window.scrollY) + ':' + Math.round(e.getBoundingClientRect().height) : null;
+    if (e && pos === last) { el = e; break; }
+    last = pos;
+    await new Promise(r => setTimeout(r, 120));
+  }
+  if (i !== tourIdx) return;
+  if (el && !['fixed', 'sticky'].includes(getComputedStyle(el).position) && !el.closest('#nav')) {
+    // Un grand bloc : on le montre par le haut, il reste de la place pour la carte en dessous
+    el.scrollIntoView({ block: el.getBoundingClientRect().height > window.innerHeight * 0.4 ? 'start' : 'center' });
+    await new Promise(r => setTimeout(r, 300));
+  }
+  if (i !== tourIdx) return;
+  // Toujours hors de l'écran : carte seule, au centre
+  if (el) { const r = el.getBoundingClientRect(); if (r.bottom < 0 || r.top > window.innerHeight) el = null; }
+  tourPlace(el);
+}
+function tourPlace(el) {
+  const hole = document.querySelector('#tour .hole'), veil = document.querySelector('#tour .veil'), card = document.querySelector('#tour .tcard');
+  if (!el) {
+    hole.style.display = 'none'; veil.style.opacity = 1;
+    card.style.top = '50%'; card.style.bottom = 'auto'; card.style.transform = 'translate(-50%,-50%)';
+    return;
+  }
+  const H = window.innerHeight, pad = 6, r0 = el.getBoundingClientRect();
+  // Zone allumée limitée à la partie visible de l'élément (un grand bloc n'occupe pas tout l'écran)
+  const top = Math.max(r0.top, 8), bottom = Math.min(r0.bottom, top + H * 0.38);
+  const r = { left: r0.left, width: r0.width, top, bottom, height: bottom - top };
+  hole.style.display = 'block'; veil.style.opacity = 0;
+  Object.assign(hole.style, { left: r.left - pad + 'px', top: r.top - pad + 'px', width: r.width + 2 * pad + 'px', height: r.height + 2 * pad + 'px' });
+  card.style.transform = 'translateX(-50%)';
+  const ch = card.offsetHeight || 260, navH = 72, gap = 18;
+  // Carte du côté où il y a la place ; sinon en bas de l'écran, toujours entièrement visible
+  if (H - navH - (r.bottom + gap) >= ch) { card.style.bottom = 'auto'; card.style.top = (r.bottom + gap) + 'px'; }
+  else if (r.top - gap - 8 >= ch) { card.style.top = 'auto'; card.style.bottom = (H - r.top + gap) + 'px'; }
+  else { card.style.top = 'auto'; card.style.bottom = navH + 'px'; }
+}
+async function tourPush() { await enablePush(); tourShow(); }
+async function tourEnd() {
+  tourOn = false;
+  $('tour').classList.remove('on');
+  writePref('introSeen', INTRO_VERSION);
+  setHomeTab('foryou');
+  navTo('home');
+  if (profile && 'intro_seen' in profile && profile.intro_seen < INTRO_VERSION) {
+    profile.intro_seen = INTRO_VERSION;
+    await sb.from('profiles').update({ intro_seen: INTRO_VERSION }).eq('id', me.id);
+  }
+}
+window.addEventListener('resize', () => { if (tourOn) tourShow(); });
+
+// ─────────────────────────────────────────
 // MESSAGERIE PRIVÉE (sur demande ; règles vérifiées par la base)
 // ─────────────────────────────────────────
 const MSG_LEVEL = 5;
@@ -2990,6 +3132,7 @@ async function renderHelp() {
   let got = new Set();
   if (hasComments && badgeDefs.length) got = new Set((await fetchMyBadges(me.id)).map(b => b.badge));
   $('help-body').innerHTML = `
+    <div style="padding:12px 16px 0"><button class="btn btn-primary" style="height:44px;font-size:14px" onclick="startTour()">✨ Revoir la présentation des nouveautés</button></div>
     <div class="slbl">💰 Gagner des points</div>
     <div class="card" style="margin:0 16px;padding:4px 16px">
       ${row('✋', 'Remplir un top', '+50')}
