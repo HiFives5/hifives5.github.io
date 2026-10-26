@@ -8,7 +8,7 @@ Décisions prises avec Lionel, à reprendre **uniquement quand il le demande**.
 - **Demande de message** : le premier message est une demande ; le destinataire accepte ou ignore.
   Un refus est **silencieux** (l'expéditeur voit seulement « en attente »).
 - **Bloquer / signaler** dès la première version (signalements dans la page admin, comme les commentaires).
-- **Notifications** : pastille dans l'appli d'abord ; notifications push (PWA installée, iOS 16.4+) dans un second temps.
+- **Notifications** : déjà en place (cloche 🔔 + push via l'Edge Function `hifives-push`) — ajouter un type `message` (migration : contrainte `notifications.kind`, réglage, texte dans la fonction et dans la cloche).
 - **Points d'entrée** : bouton « ✉️ Écrire » dans le face-à-face et sur le profil des autres.
 - Mention d'information : les messages ne sont pas chiffrés de bout en bout (lisibles par l'admin de la base).
 
