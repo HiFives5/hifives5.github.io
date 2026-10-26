@@ -326,6 +326,10 @@ body.has-sticky .page{padding-bottom:calc(128px + var(--safe-b))}
 .setting input{width:20px;height:20px;accent-color:var(--orange)}
 
 /* ── RETOURS UTILISATEURS ── */
+.icon-btn{position:relative}
+.icon-btn .nav-badge{top:-5px;right:-5px;box-shadow:0 0 0 2px var(--bg)}
+.nt-ico{width:34px;height:34px;border-radius:11px;background:var(--card2);display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0}
+.setting + .setting.nt{margin-top:8px}
 .icon-btn{width:36px;height:36px;border-radius:12px;background:var(--card2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer}
 .stars{display:flex;gap:6px;margin-bottom:16px}
 .star{font-size:30px;color:var(--bg3);cursor:pointer;line-height:1;-webkit-text-stroke:1px var(--b2)}
@@ -461,6 +465,7 @@ body.has-sticky .page{padding-bottom:calc(128px + var(--safe-b))}
   <div class="screen-hdr">
     <div class="screen-title">Hi<span style="color:var(--orange)">Fives</span> ✋</div>
     <div style="display:flex;gap:8px">
+      <div class="icon-btn" id="bell" onclick="openNotifs()" title="Notifications" style="display:none">🔔<span class="nav-badge" id="notif-badge"></span></div>
       <div class="icon-btn" onclick="openFeedback()" title="Donner mon avis">💬</div>
       <div class="avatar" id="home-av" onclick="navTo('profile')">?</div>
     </div>
@@ -642,6 +647,7 @@ body.has-sticky .page{padding-bottom:calc(128px + var(--safe-b))}
       <div class="xp-bar-bg"><div class="xp-bar-fill" id="p-xp-fill" style="width:0%"></div></div>
       <div style="font-size:11px;color:var(--t3)" id="p-xp-next"></div>
     </div>
+    <div id="p-notifset"></div>
     <label class="setting">
       <input type="checkbox" id="demo-toggle" onchange="setIncludeDemo(this.checked)">
       <div><div style="font-size:13px;font-weight:700">Inclure les profils de démo</div><div style="font-size:11px;color:var(--t3);margin-top:2px">Réponses fictives pour tester l'appli</div></div>
@@ -725,6 +731,19 @@ body.has-sticky .page{padding-bottom:calc(128px + var(--safe-b))}
     <div class="slbl">Ses tops</div>
     <div id="up-tops" style="padding-bottom:24px"></div>
   </div>
+</div>
+
+<!-- ══════ NOTIFICATIONS ══════ -->
+<div id="page-notifs" class="page no-nav">
+  <div class="sub-hdr">
+    <div class="back-btn" onclick="goBack()">←</div>
+    <div style="flex:1">
+      <div class="hdr-kicker" style="color:var(--t3)">Centre</div>
+      <div class="hdr-title">🔔 Notifications</div>
+    </div>
+    <div class="icon-btn" onclick="openNotifSettings()" title="Réglages">⚙️</div>
+  </div>
+  <div class="scroll" style="padding:8px 0 32px"><div id="nt-list"></div></div>
 </div>
 
 <!-- ══════ AIDE : COMMENT ÇA MARCHE ══════ -->
@@ -869,7 +888,7 @@ body.has-sticky .page{padding-bottom:calc(128px + var(--safe-b))}
 
 <div id="pub-sticky"></div>
 <div id="nav">
-  <button class="nav-btn active" id="nav-home" onclick="navTo('home')"><div class="nav-ico">🏠</div><div class="nav-lbl">Accueil</div></button>
+  <button class="nav-btn active" id="nav-home" onclick="navTo('home')"><div class="nav-ico">🏠</div><div class="nav-lbl">Accueil</div><span class="nav-badge" id="notif-nav-badge"></span></button>
   <button class="nav-btn" id="nav-search" onclick="navTo('search')"><div class="nav-ico">🔍</div><div class="nav-lbl">Sujets</div></button>
   <button class="nav-plus" onclick="startCreate()">+</button>
   <button class="nav-btn" id="nav-affinities" onclick="navTo('affinities')"><div class="nav-ico">🧲</div><div class="nav-lbl">Affinités</div></button>
@@ -1054,6 +1073,8 @@ async function loadData() {
   sponsoredNext = all.find(c => t0(c) > now) || null;
   // Commentaires disponibles ? (migration 013)
   if (hasComments === null) { const cm = await sb.from('comments').select('id').limit(1); hasComments = !cm.error; }
+  // Notifications (migration 018)
+  if (hasNotifs === null) { const nt = await sb.from('notifications').select('id').limit(1); hasNotifs = !nt.error; }
   // Publicités actives (migration 016)
   const pb = await sb.from('ads').select('*').eq('active', true).order('created_at');
   hasAds = !pb.error;
@@ -1071,7 +1092,8 @@ let hasMedia = null;
 let sponsored = [];   // défis sponsorisés en cours
 let hasComments = null;   // migration 013 exécutée ? (commentaires + badges)
 let badgeDefs = [];       // catalogue des badges
-let hasAds = false, adsList = [], pubShown = new Set();   // régie publicitaire maison (migration 016)
+let hasAds = false, adsList = [], pubShown = new Set();
+let hasNotifs = null;     // centre de notifications (migration 018)   // régie publicitaire maison (migration 016)
 const CMT_SEL = () => hasComments ? ',comments(count)' : '';
 let sponsoredPast = [];   // défis passés (60 jours), du plus récent au plus ancien
 let sponsoredNext = null; // prochain défi (teaser)
@@ -1384,6 +1406,7 @@ async function ensureTopic(id) {
 document.addEventListener('visibilitychange', async () => {
   if (document.visibilityState !== 'visible') return;
   const cur = stack[stack.length - 1];
+  updateNotifBadge();
   if (await refreshIfStale() && ['home', 'search', 'profile'].includes(cur) && stack[stack.length - 1] === cur) RENDERERS[cur]();
 });
 
@@ -1475,6 +1498,7 @@ const RENDERERS = {
   user: () => renderUser(currentUserId),
   answer: () => renderAnswer(currentAnswerId),
   admin: () => renderAdmin(),
+  notifs: () => renderNotifs(),
   adminpub: () => renderPubAdmin(),
   help: () => renderHelp(),
   stat: () => renderStat(currentStat),
@@ -1726,6 +1750,7 @@ function topicRow(t, counts, mine, why) {
 }
 
 function renderHome() {
+  updateNotifBadge();
   pubReset();
   $('pub-home').innerHTML = pubSlot(null);
   let todoAd = null;   // même bandeau si la liste est réaffichée
@@ -2233,6 +2258,8 @@ async function getSuggestions() {
       radarNew.forEach(m => hits.unshift({ u: m.u, handle: m.handle, pct: m.pct, at: new Date().toISOString() }));
       writePref('radarHits', hits.slice(0, 5));
       toast(`📡 Radar : ${radarNew[0].handle} est ton âme sœur à ${radarNew[0].pct} % !`);
+      if (hasNotifs && notifOn('progress'))
+        radarNew.forEach(m => sb.from('notifications').insert({ user_id: me.id, kind: 'soulmate', actor_id: m.u, data: { pct: m.pct } }).then(() => {}, () => {}));
     }
     twins = matches.slice(0, 10);
   }
@@ -2400,6 +2427,93 @@ async function renderTopic(id) {
     : '<div style="font-size:13px;color:var(--t3);padding:0 20px 16px">Aucune réponse pour l\'instant.</div>';
   $('tp-recent').insertAdjacentHTML('afterbegin', ad1);
   pubMount();
+}
+
+// ─────────────────────────────────────────
+// NOTIFICATIONS 🔔 (créées par la base ; l'appli les affiche et les marque comme lues)
+// ─────────────────────────────────────────
+const NOTIF_TYPES = [
+  { k: 'comment', label: 'Commentaires sur mes tops' },
+  { k: 'hi5', label: 'High fives reçus' },
+  { k: 'progress', label: 'Badges, niveaux et radar d\'âmes sœurs' },
+  { k: 'invite', label: 'Amis qui répondent à mes partages' },
+  { k: 'daily', label: 'Rappel du défi du jour', hint: 'arrive avec les notifications push' },
+];
+const notifOn = k => (profile?.notif_prefs || {})[k] !== false;
+async function updateNotifBadge() {
+  const bell = $('bell');
+  if (!hasNotifs || !me) { if (bell) bell.style.display = 'none'; return; }
+  bell.style.display = '';
+  const { count } = await sb.from('notifications').select('id', { count: 'exact', head: true }).is('read_at', null);
+  [$('notif-badge'), $('notif-nav-badge')].forEach(b => { b.textContent = count > 9 ? '9+' : count; b.style.display = count ? 'flex' : 'none'; });
+}
+function openNotifs() { pushPage('notifs'); renderNotifs(); }
+function openNotifSettings() { navTo('profile'); setTimeout(() => $('p-notifset')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 400); }
+// Texte, icône et destination de chaque notification
+function notifView(n) {
+  const who = `<span class="who">${esc(n.actor?.handle || 'Quelqu\'un')}</span>`;
+  const t = topicById(n.topic_id), tt = t ? esc(t.title.replace(/^Top 5 /, 'ton top 5 ')) : 'ton top';
+  const d = n.data || {};
+  switch (n.kind) {
+    case 'comment': return { ico: '💬', go: `openComments('${n.top_id}')`, html: `${who} a commenté ${tt}${d.body ? ` : « ${esc(d.body)} »` : ''}` };
+    case 'hi5': { const c = d.count || 1; return { ico: '✋', go: `openTopic('${n.topic_id}')`, html: `${who}${c > 1 ? ` et ${c - 1} autre${c > 2 ? 's' : ''}` : ''} ${c > 1 ? 'ont' : 'a'} fait un high five sur ${tt}` }; }
+    case 'badge': return { ico: d.emoji || '🏅', go: `navTo('profile')`, html: `Nouveau badge : <strong>${esc(d.label || '')}</strong> (+${d.points || 0} pts)` };
+    case 'level': { const l = d.level || 1; return { ico: '🎉', go: `openStat('points')`, html: `Niveau ${l} · <strong>${LEVEL_NAMES[l - 1] || ''}</strong> ! Va voir ce que tu débloques` }; }
+    case 'invite': return { ico: '🤝', go: `openUser('${n.actor_id}')`, html: `${who} a fait ${t ? esc(t.title.replace(/^Top 5 /, 'son top 5 ')) : 'son top'} grâce à ton lien${d.pct != null ? ` : vous êtes compatibles à <strong>${d.pct} %</strong>` : ''}` };
+    case 'soulmate': return { ico: '💞', go: `openUser('${n.actor_id}')`, html: `Radar : ${who} est ton âme sœur à <strong>${d.pct} %</strong>` };
+    case 'daily': return { ico: '⭐', go: `navTo('home')`, html: esc(d.text || 'Le défi du jour t\'attend !') };
+    default: return { ico: '🔔', go: '', html: '' };
+  }
+}
+async function renderNotifs() {
+  const box = $('nt-list');
+  if (!hasNotifs) { box.innerHTML = '<div class="empty"><div class="empty-ico">🔔</div>Les notifications arrivent bientôt.</div>'; return; }
+  box.innerHTML = LOADER;
+  const { data, error } = await sb.from('notifications')
+    .select('id,kind,actor_id,top_id,topic_id,data,created_at,read_at,actor:profiles!notifications_actor_id_fkey(id,handle)')
+    .order('created_at', { ascending: false }).limit(60);
+  if (error) { box.innerHTML = `<div class="empty">Erreur : ${esc(error.message)}</div>`; return; }
+  if (data.some(n => n.topic_id && !topicById(n.topic_id))) { try { await loadData(); } catch (e) {} }
+  box.innerHTML = data.length
+    ? byMonth(data, n => n.created_at, n => {
+        const v = notifView(n);
+        return `<div class="hi5-row ${n.read_at ? '' : 'new'}" style="cursor:pointer" onclick="${v.go}">
+          <div class="nt-ico">${esc(v.ico)}</div>
+          <div class="hi5-txt">${v.html}<div class="topic-meta">${timeAgo(n.created_at)}</div></div></div>`;
+      })
+    : '<div class="empty"><div class="empty-ico">🔔</div>Rien de neuf pour l\'instant.<br>Commentaires, high fives, badges et invitations arriveront ici.</div>';
+  // Tout est vu : on marque comme lu
+  if (data.some(n => !n.read_at)) {
+    await sb.from('notifications').update({ read_at: new Date().toISOString() }).is('read_at', null);
+    updateNotifBadge();
+  }
+}
+// Réglages par type (profil)
+function renderNotifSettings() {
+  const box = $('p-notifset');
+  if (!hasNotifs || !('notif_prefs' in (profile || {}))) { box.innerHTML = ''; return; }
+  box.innerHTML = '<div class="slbl">🔔 Notifications</div>' + NOTIF_TYPES.map(t => `<label class="setting nt" style="margin-top:8px">
+      <input type="checkbox" ${notifOn(t.k) ? 'checked' : ''} onchange="setNotifPref('${t.k}', this.checked)">
+      <div><div style="font-size:13px;font-weight:700">${t.label}</div>${t.hint ? `<div style="font-size:11px;color:var(--t3);margin-top:2px">${t.hint}</div>` : ''}</div></label>`).join('');
+}
+async function setNotifPref(k, on) {
+  const prefs = { ...(profile.notif_prefs || {}), [k]: on };
+  const { error } = await sb.from('profiles').update({ notif_prefs: prefs }).eq('id', me.id);
+  if (error) return toast('Erreur : ' + error.message);
+  profile.notif_prefs = prefs;
+  toast(on ? '🔔 Activé' : '🔕 Désactivé');
+}
+// Invitation : prévenir la personne qui a partagé le lien, avec notre compatibilité
+async function notifyInviter(from, topicId) {
+  if (!hasNotifs || !from || from === me.id) return;
+  let pct = null;
+  try {
+    const items = await fetchAll(() => sb.from('top_items').select(`top_id,${ITEM_COLS()},tops!inner(topic_id,user_id)`)
+      .in('tops.user_id', [me.id, from]).order('top_id').order('rank'));
+    const idx = indexTops(items, keyMaker(items));
+    pct = compareWith(idx[me.id] || {}, idx[from] || {})?.pct ?? null;
+  } catch (e) {}
+  sb.rpc('notify_invite', { inviter: from, topic: topicId, pct }).then(() => {}, () => {});
 }
 
 // ─────────────────────────────────────────
@@ -2843,6 +2957,8 @@ async function fetchHi5Received(limit) {
 async function updateHi5Badge() {
   const seen = readPref('hi5Seen', null);
   const b = $('hi5-badge');
+  // Avec le centre de notifications, la cloche remplace cette pastille
+  if (hasNotifs) { b.style.display = 'none'; return; }
   if (!seen) { writePref('hi5Seen', new Date().toISOString()); b.style.display = 'none'; return; }
   try {
     const [list, cms] = await Promise.all([fetchHi5Received(50), fetchCommentsReceived(50).catch(() => [])]);
@@ -3258,7 +3374,7 @@ function pageContext() {
   if (cur === 'fill') return 'Saisie : ' + (fillTopic?.title || '');
   if (cur === 'success') return 'Résultat : ' + (fillTopic?.title || '');
   return { home: 'Accueil', search: 'Sujets', profile: 'Profil', affinities: 'Affinités', create: 'Création de sujet',
-           user: 'Profil d\'un membre', answer: 'Réponse d\'un membre', admin: 'Admin · retours', adminpub: 'Admin · publicités', help: 'Aide' }[cur] || cur;
+           user: 'Profil d\'un membre', answer: 'Réponse d\'un membre', admin: 'Admin · retours', notifs: 'Notifications', adminpub: 'Admin · publicités', help: 'Aide' }[cur] || cur;
 }
 
 function openFeedback() {
@@ -3778,6 +3894,7 @@ async function renderSuccess(topic, myVals, isNew) {
   const inv = $('sc-invite');
   if (invite && invite.t === topic.id && invite.de && invite.de !== me.id) {
     const from = invite.de;
+    if (isNew) notifyInviter(from, topic.id);
     inv.style.display = '';
     inv.textContent = '🤝 Voir ta compatibilité avec ' + (invite.handle || 'ton ami');
     inv.onclick = () => { invite = null; openUser(from); };
@@ -4048,6 +4165,7 @@ async function renderProfile() {
   renderHi5Received();
   renderCommentsReceived();
   renderBadges('p-badges', me.id);
+  renderNotifSettings();
 }
 
 // Titre sous le pseudo : un de mes badges, à partir du niveau 4
