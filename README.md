@@ -44,6 +44,7 @@ Les évolutions se font par des fichiers `supabase/migrations/NNN_*.sql`, à ex�
 - `016_publicites.sql` : régie publicitaire maison (bandeaux gérés depuis la page admin, ciblage par thème, compteurs d'affichages et de clics agrégés, sans cookie).
 - `017_pubs_exemples.sql` : 57 exemples de bandeaux de marques (2 à 3 par thème), marqués « Exemple ».
 - `018_notifications.sql` : centre de notifications 🔔 (commentaires, high fives regroupés, badges, niveaux, invitations, radar), réglages par type.
+- `019_notifications_push.sql` : notifications push (abonnements des téléphones, clés gardées côté serveur, appel chaque minute de l'Edge Function `supabase/functions/hifives-push`, à créer avant).
 
 ### Défis sponsorisés
 Table Editor → `sponsored_challenges` (modifiable par les admins uniquement) :

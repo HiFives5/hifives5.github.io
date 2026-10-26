@@ -1075,6 +1075,7 @@ async function loadData() {
   if (hasComments === null) { const cm = await sb.from('comments').select('id').limit(1); hasComments = !cm.error; }
   // Notifications (migration 018)
   if (hasNotifs === null) { const nt = await sb.from('notifications').select('id').limit(1); hasNotifs = !nt.error; }
+  if (hasPush === null) { const ps = await sb.from('push_subscriptions').select('id').limit(1); hasPush = !ps.error; }
   // Publicités actives (migration 016)
   const pb = await sb.from('ads').select('*').eq('active', true).order('created_at');
   hasAds = !pb.error;
@@ -1093,7 +1094,8 @@ let sponsored = [];   // défis sponsorisés en cours
 let hasComments = null;   // migration 013 exécutée ? (commentaires + badges)
 let badgeDefs = [];       // catalogue des badges
 let hasAds = false, adsList = [], pubShown = new Set();
-let hasNotifs = null;     // centre de notifications (migration 018)   // régie publicitaire maison (migration 016)
+let hasNotifs = null;     // centre de notifications (migration 018)
+let hasPush = null;       // notifications push (migration 019 + Edge Function hifives-push)   // régie publicitaire maison (migration 016)
 const CMT_SEL = () => hasComments ? ',comments(count)' : '';
 let sponsoredPast = [];   // défis passés (60 jours), du plus récent au plus ancien
 let sponsoredNext = null; // prochain défi (teaser)
@@ -1631,6 +1633,7 @@ async function onAuthSuccess(user) {
   history.replaceState({ hf: 1 }, '');
   navTo('home');
   openInvite();
+  if (openNotifsOnStart) { openNotifsOnStart = false; openNotifs(); }
 }
 
 function showSetupError(e) {
@@ -2437,7 +2440,7 @@ const NOTIF_TYPES = [
   { k: 'hi5', label: 'High fives reçus' },
   { k: 'progress', label: 'Badges, niveaux et radar d\'âmes sœurs' },
   { k: 'invite', label: 'Amis qui répondent à mes partages' },
-  { k: 'daily', label: 'Rappel du défi du jour', hint: 'arrive avec les notifications push' },
+  { k: 'daily', label: 'Rappel du défi du jour', hint: 'à 18 h, si tu ne l\'as pas encore relevé' },
 ];
 const notifOn = k => (profile?.notif_prefs || {})[k] !== false;
 async function updateNotifBadge() {
@@ -2461,7 +2464,7 @@ function notifView(n) {
     case 'level': { const l = d.level || 1; return { ico: '🎉', go: `openStat('points')`, html: `Niveau ${l} · <strong>${LEVEL_NAMES[l - 1] || ''}</strong> ! Va voir ce que tu débloques` }; }
     case 'invite': return { ico: '🤝', go: `openUser('${n.actor_id}')`, html: `${who} a fait ${t ? esc(t.title.replace(/^Top 5 /, 'son top 5 ')) : 'son top'} grâce à ton lien${d.pct != null ? ` : vous êtes compatibles à <strong>${d.pct} %</strong>` : ''}` };
     case 'soulmate': return { ico: '💞', go: `openUser('${n.actor_id}')`, html: `Radar : ${who} est ton âme sœur à <strong>${d.pct} %</strong>` };
-    case 'daily': return { ico: '⭐', go: `navTo('home')`, html: esc(d.text || 'Le défi du jour t\'attend !') };
+    case 'daily': return { ico: '⭐', go: n.topic_id ? `openFillById('${n.topic_id}')` : `navTo('home')`, html: esc(d.text || 'Le défi du jour t\'attend !') };
     default: return { ico: '🔔', go: '', html: '' };
   }
 }
@@ -2474,14 +2477,18 @@ async function renderNotifs() {
     .order('created_at', { ascending: false }).limit(60);
   if (error) { box.innerHTML = `<div class="empty">Erreur : ${esc(error.message)}</div>`; return; }
   if (data.some(n => n.topic_id && !topicById(n.topic_id))) { try { await loadData(); } catch (e) {} }
-  box.innerHTML = data.length
+  const st = hasPush ? await pushState() : null;
+  const tip = st === 'off' || st === 'install'
+    ? `<div class="insight" style="margin:4px 16px 12px;cursor:pointer" onclick="openNotifSettings()"><div class="ins-tag">📲 Sur ton téléphone</div>
+        <div class="ins-text">Reçois ces notifications même quand l'appli est fermée →</div></div>` : '';
+  box.innerHTML = tip + (data.length
     ? byMonth(data, n => n.created_at, n => {
         const v = notifView(n);
         return `<div class="hi5-row ${n.read_at ? '' : 'new'}" style="cursor:pointer" onclick="${v.go}">
           <div class="nt-ico">${esc(v.ico)}</div>
           <div class="hi5-txt">${v.html}<div class="topic-meta">${timeAgo(n.created_at)}</div></div></div>`;
       })
-    : '<div class="empty"><div class="empty-ico">🔔</div>Rien de neuf pour l\'instant.<br>Commentaires, high fives, badges et invitations arriveront ici.</div>';
+    : '<div class="empty"><div class="empty-ico">🔔</div>Rien de neuf pour l\'instant.<br>Commentaires, high fives, badges et invitations arriveront ici.</div>');
   // Tout est vu : on marque comme lu
   if (data.some(n => !n.read_at)) {
     await sb.from('notifications').update({ read_at: new Date().toISOString() }).is('read_at', null);
@@ -2489,12 +2496,63 @@ async function renderNotifs() {
   }
 }
 // Réglages par type (profil)
-function renderNotifSettings() {
+async function renderNotifSettings() {
   const box = $('p-notifset');
   if (!hasNotifs || !('notif_prefs' in (profile || {}))) { box.innerHTML = ''; return; }
-  box.innerHTML = '<div class="slbl">🔔 Notifications</div>' + NOTIF_TYPES.map(t => `<label class="setting nt" style="margin-top:8px">
+  const st = hasPush ? await pushState() : null;
+  const card = !st ? '' : `<div class="setting" style="display:block">
+      <div style="font-size:13px;font-weight:700">📲 Sur ce téléphone</div>
+      <div style="font-size:12px;color:var(--t3);margin:4px 0 ${st === 'off' || st === 'on' ? '10px' : '0'};line-height:1.45">${PUSH_TXT[st]}</div>
+      ${st === 'off' ? '<button class="btn btn-primary" style="height:42px;font-size:14px" onclick="enablePush()">Activer les notifications</button>' : ''}
+      ${st === 'on' ? '<button class="btn btn-ghost" style="height:38px;font-size:13px" onclick="disablePush()">Désactiver sur ce téléphone</button>' : ''}</div>`;
+  box.innerHTML = '<div class="slbl">🔔 Notifications</div>' + card + NOTIF_TYPES.map(t => `<label class="setting nt" style="margin-top:8px">
       <input type="checkbox" ${notifOn(t.k) ? 'checked' : ''} onchange="setNotifPref('${t.k}', this.checked)">
       <div><div style="font-size:13px;font-weight:700">${t.label}</div>${t.hint ? `<div style="font-size:11px;color:var(--t3);margin-top:2px">${t.hint}</div>` : ''}</div></label>`).join('');
+}
+// ── Push : abonnement de ce téléphone (clé publique fournie par l'Edge Function)
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const PUSH_TXT = {
+  install: 'Sur iPhone, ajoute d\'abord HiFives à l\'écran d\'accueil : dans Safari, bouton Partager ⬆️ → « Sur l\'écran d\'accueil », puis ouvre l\'appli depuis cette icône et reviens ici.',
+  unsupported: 'Ce navigateur ne permet pas les notifications push. La cloche 🔔 de l\'appli reste à jour.',
+  denied: 'Notifications bloquées sur ce téléphone : Réglages → Notifications → HiFives pour les autoriser.',
+  off: 'Reçois tes notifications même quand l\'appli est fermée. Jamais entre 22 h et 8 h.',
+  on: '✅ Activées. Rien entre 22 h et 8 h, et au plus une toutes les 5 minutes.',
+};
+async function pushState() {
+  if (isIOS && !isStandalone()) return 'install';
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return 'unsupported';
+  if (Notification.permission === 'denied') return 'denied';
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    return reg && await reg.pushManager.getSubscription() ? 'on' : 'off';
+  } catch (e) { return 'off'; }
+}
+const urlB64 = s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - s.length % 4) % 4)), c => c.charCodeAt(0));
+async function enablePush() {
+  try {
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') { toast('Notifications refusées : tu peux les autoriser dans les réglages du téléphone'); return renderNotifSettings(); }
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/hifives-push?key=1`, { headers: { Authorization: 'Bearer ' + SUPABASE_ANON_KEY, apikey: SUPABASE_ANON_KEY } });
+    const { publicKey } = await res.json().catch(() => ({}));
+    if (!publicKey) throw new Error('service de notifications indisponible');
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription() || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64(publicKey) });
+    const j = sub.toJSON();
+    const { error } = await sb.from('push_subscriptions').upsert({ user_id: me.id, endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, ua: navigator.userAgent.slice(0, 300) }, { onConflict: 'endpoint' });
+    if (error) throw error;
+    toast('📲 Notifications activées sur ce téléphone');
+  } catch (e) { toast('Activation impossible : ' + (e.message || e)); }
+  renderNotifSettings();
+}
+async function disablePush() {
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    const sub = reg && await reg.pushManager.getSubscription();
+    if (sub) { await sb.from('push_subscriptions').delete().eq('endpoint', sub.endpoint); await sub.unsubscribe(); }
+    toast('🔕 Notifications désactivées sur ce téléphone');
+  } catch (e) { toast('Erreur : ' + (e.message || e)); }
+  renderNotifSettings();
 }
 async function setNotifPref(k, on) {
   const prefs = { ...(profile.notif_prefs || {}), [k]: on };
@@ -4304,13 +4362,15 @@ async function renderUser(userId) {
 // PARTAGE d'un top (WhatsApp, SMS…) et liens d'invitation ?t=<sujet>&de=<personne>
 // ─────────────────────────────────────────
 let invite = null;   // { t, de, handle }
+let openNotifsOnStart = false;   // ouverture depuis une notification push
 (function readInvite() {
   try {
     const q = new URLSearchParams(location.search);
     const t = q.get('t'), de = q.get('de');
     const uuid = /^[0-9a-f-]{36}$/;
     if (t && uuid.test(t)) localStorage.setItem('hf_invite', JSON.stringify({ t, de: de && uuid.test(de) ? de : null }));
-    if (q.has('t')) history.replaceState(null, '', location.pathname);
+    if (q.has('n')) openNotifsOnStart = true;
+    if (q.has('t') || q.has('n')) history.replaceState(null, '', location.pathname);
     invite = JSON.parse(localStorage.getItem('hf_invite') || 'null');
   } catch (e) { invite = null; }
 })();
