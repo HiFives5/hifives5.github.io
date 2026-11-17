@@ -264,6 +264,7 @@ body.has-sticky .page{padding-bottom:calc(128px + var(--safe-b))}
 .ac-opt.media{display:flex;align-items:center;gap:10px;padding:8px 12px}
 .ac-opt.media small{margin-left:0}
 .ac-poster{width:30px;height:45px;object-fit:cover;border-radius:4px;flex-shrink:0;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:14px}
+.ac-keep{color:var(--t2);font-weight:700}
 .ac-info{padding:11px 14px;font-size:13px;color:var(--t3)}
 .kb-open #page-fill{padding-bottom:55vh}
 .ac-list.up{top:auto;bottom:48px}
@@ -1345,7 +1346,6 @@ const WIKI_TOPICS = [
 //  • voyages : OpenStreetMap (Photon) — villes, pays, îles, plages, sommets…
 //  • produits et marques (gastronomie, boissons) : Open Food Facts
 //  • autres thèmes « encyclopédiques » : Wikidata sans filtre (description affichée pour choisir)
-const WD_ANY = /^(?!.*(homonymie|Wikimédia|Wikimedia|nom de famille|prénom))/i;
 const WD_CATS = ['Auto & moto', 'Tech & web', 'Marques & mode', 'Nature & animaux', 'Histoire & culture', 'Personnalités',
   'Gastronomie', 'Boissons', 'Livres', 'Jeux', 'Spectacles & sorties', 'Sport'];
 const PRODUCT_RE = /\b(produits?|bonbons?|biscuits?|céréales|chips|sodas?|yaourts?|glaces?|chocolats?|barres?|gâteaux|confiseries?|snacks?|jus|boissons?|bières?)\b/i;
@@ -1357,6 +1357,35 @@ const PLACE_TAGS = [
   [/\b(montagnes?|sommets?)\b/i, ['natural:peak']],
   [/\b(villages?)\b/i, ['place:village']],
 ];
+// Wikidata sans filtre propose n'importe quoi (« Rami » → Rami Malek dans un top des jeux de cartes) :
+// on filtre la description des résultats selon le type de réponse attendu par le sujet
+const WD_PEOPLE = /\b(acteu|actrice|comédien|chanteu|rappeu|musicien|réalisat|cinéaste|scénariste|producteu|animat|présentat|journaliste|écrivain|romanci|poète|politi|footballeu|joueu|sportif|sportive|athlète|pilote|mannequin|youtubeu|vidéaste|influenceu|humoriste|personnalité|homme|femme|entrepreneu|militaire|peintre|sculpteu|philosophe|scientifique|physicien|chimiste|mathématicien|compositeu|danseu|auteu|autrice|dessinat|styliste|couturi|cuisinier|chef|roi|reine|empereu|président|inventeu|explorat)/i;
+const WD_NOT_OFFTOPIC = /^(?!.*(homonymie|Wikimédia|Wikimedia|nom de famille|prénom|acteu|actrice|chanteu|rappeu|musicien|réalisat|footballeu|joueu|pilote|sportif|sportive|athlète|homme politique|femme politique|personnalité|mannequin|série télévisée|épisode|album|chanson|single|personnage de fiction))/i;
+const WD_TYPES = [
+  // Personnes
+  { title: /acteurs?|actrices?|comédien/i, desc: /acteu|actrice|comédien/i },
+  { title: /réalisat/i, desc: /réalisat|cinéaste/i },
+  { title: /chanteu|rappeu|musiciens?|groupes?|artistes? musica/i, desc: /chanteu|rappeu|musicien|auteur-compositeur|groupe|DJ|compositeu/i },
+  { title: /humoristes?/i, desc: /humoriste|comédien|acteu|actrice|imitat|chroniqueu/i },
+  { title: /peintres?/i, desc: /peintre|artiste|dessinat/i },
+  { title: /youtubeu|créat(eur|rice)s?.*(youtube|contenu)|influenceu|streameu/i, desc: /youtubeu|vidéaste|humoriste|influenceu|streameu|animat|chroniqueu|blogueu/i },
+  { title: /auteurs?|autrices?|écrivain|romanci/i, desc: /écrivain|romanci|auteu|autrice|poète|dramaturge|essayiste|scénariste|dessinat|mangaka/i },
+  { title: /personnages? (historiques?|célèbres?)|personnalités?|personnes?\b|sportives?/i, desc: WD_PEOPLE },
+  { title: /personnages?/i, desc: /personnage|héros|héroïne|super-héro/i },
+  // Jeux
+  { title: /jeux? de cartes/i, desc: /jeu de cartes?|jeu de levées|jeu de défausse|jeu de combinaison|jeu de collection|patience/i },
+  { title: /jeux? de (société|plateau)/i, desc: /jeu de (société|plateau|cartes|dés|lettres|stratégie|rôle|tuiles|placement)|jeu abstrait/i },
+  { title: /jeux? vidéo|nintendo|playstation|xbox|sega|jeux? (sur |pour )?(mobile|smartphone|console|pc)/i, desc: /jeu vidéo|série de jeux vidéo|franchise/i },
+  // Livres
+  { title: /mangas?/i, desc: /manga|série de bande dessinée|bande dessinée japonaise/i },
+  { title: /bandes? dessinées?|\bBD\b|comics/i, desc: /bande dessinée|comics|série de BD|album|manga/i },
+];
+// Par défaut, selon la catégorie (null : pas de Wikidata, seulement les réponses de la communauté)
+const WD_CAT_DESC = {
+  'Jeux': /\bjeux?\b|franchise|jouet|gamme|licence|pokémon|personnage/i,
+  'Livres': /roman|livre|œuvre littéraire|ouvrage|essai|recueil|nouvelle|pièce de théâtre|bande dessinée|manga|conte|saga|série|cycle|trilogie|poème|biographie|autobiographie/i,
+  'Personnalités': WD_PEOPLE,
+};
 function wikiFor(topic) {
   const w = WIKI_TOPICS.find(w => w.title.test(topic.title));
   if (w) return { src: 'wd', ...w };
@@ -1364,8 +1393,10 @@ function wikiFor(topic) {
   const place = PLACE_TAGS.find(([re]) => re.test(t));
   if (c === 'Voyages' || place) return { src: 'osm', tags: place ? place[1] : [] };
   if (['Gastronomie', 'Boissons', 'Nostalgie'].includes(c) && PRODUCT_RE.test(t)) return { src: 'off' };
-  if (WD_CATS.includes(c)) return { src: 'wd', desc: WD_ANY };
-  return null;
+  if (!WD_CATS.includes(c)) return null;
+  const typed = WD_TYPES.find(x => x.title.test(t));
+  if (typed) return { src: 'wd', desc: typed.desc };
+  return { src: 'wd', desc: WD_CAT_DESC[c] || WD_NOT_OFFTOPIC };
 }
 const softSearch = (cfg, q) => cfg.src === 'osm' ? osmSearch(cfg, q) : cfg.src === 'off' ? offSearch(q) : wikiSearch(cfg, q);
 // Drapeau à partir du code pays (fr → 🇫🇷)
@@ -4140,6 +4171,15 @@ function renderFillRows() {
         o.addEventListener('click', () => choose(p));
         list.appendChild(o);
       });
+      // Saisie libre : un tap pour garder ce que j'ai tapé, sans passer par une proposition
+      const typed = inp.value.trim().replace(/\s+/g, ' ');
+      if (!fillMedia && opts.length && typed.length >= 2) {
+        const k = document.createElement('div');
+        k.className = 'ac-opt ac-keep';
+        k.textContent = `✏️ Garder « ${typed} »`;
+        k.addEventListener('click', () => choose({ content: typed }));
+        list.prepend(k);
+      }
       if (info) list.insertAdjacentHTML('beforeend', `<div class="ac-info">${info}</div>`);
       list.style.display = (opts.length || info) && document.activeElement === inp ? 'block' : 'none';
       if (list.style.display === 'block') placeList();
